@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import re
 
-_ENCODING = re.compile(r'(\d+)s(-?\d+)x(-?\d+)y')
+_ENCODING = re.compile(r'(-?\d+)x(-?\d+)y(\d+)s')
 
 
 @dataclass(frozen=True)
@@ -14,13 +14,13 @@ class Cell:
     m = _ENCODING.fullmatch(encoded)
     if not m:
       raise ValueError(f"Invalid format: {encoded}")
-    s, x, y = map(int, m.groups())
-    object.__setattr__(self, 's', s)
+    x, y, s = map(int, m.groups())
     object.__setattr__(self, 'x', x)
     object.__setattr__(self, 'y', y)
+    object.__setattr__(self, 's', s)
 
   @classmethod
-  def fromPoint(cls, x: int, y: int, s: int = 5) -> 'Cell':
+  def fromPoint(cls, x: float, y: float, s: int = 5) -> 'Cell':
     """Creates a Cell instance from x and y coordinates.
 
     Args:
