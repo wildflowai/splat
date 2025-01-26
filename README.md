@@ -14,7 +14,7 @@ Someone swim with a few GoPros around a reef and we create 3D model so that you 
 
 This is a workflow below takes Metashape project as input, trains 3DGS model and deploys it for users to see it.
 
-![](/images/wildflow-3dgs-wf.png)
+![](/images/wildflow-3dgs-wf.svg)
 
 # 0. Metashape | 100 years
 
