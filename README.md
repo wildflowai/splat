@@ -8,11 +8,13 @@ cd splat
 pip install -r requirements.txt
 ```
 
-# Metashape -> 3DGS process
+# Train Reef Splats Workflow
 
-Someone swim with a few GoPro cameras and we create 3D model so that anyone could see reefs in the browser and how they change over time.
+Someone swim with a few GoPros around a reef and we create 3D model so that you can see corals in the browser and how they change over time (e.g. [wildflow.ai/demo](https://wildflow.ai/demo))
 
-This is a workflow that takes Metashape project as input, trains 3DGS model and deploy it for users to see it.
+This is a workflow below takes Metashape project as input, trains 3DGS model and deploys it for users to see it.
+
+![](/images/wildflow-3dgs-wf.png)
 
 # 0. Metashape | 100 years
 
