@@ -70,13 +70,13 @@ def compute_grid_stats(points: List[Point2D], cameras: List[Point2D],
   grid_cells = defaultdict(lambda: {"point_count": 0, "camera_count": 0})
 
   for point in points:
-    cell = Cell.fromPoint(
-        int(point.x - bounds[0]), int(point.y - bounds[2]), grid_size)
+    # Remove bounds subtraction
+    cell = Cell.fromPoint(point.x, point.y, grid_size)
     grid_cells[cell]["point_count"] += 1
 
   for camera in cameras:
-    cell = Cell.fromPoint(
-        int(camera.x - bounds[0]), int(camera.y - bounds[2]), grid_size)
+    # Remove bounds subtraction
+    cell = Cell.fromPoint(camera.x, camera.y, grid_size)
     grid_cells[cell]["camera_count"] += 1
 
   return grid_cells, bounds
@@ -107,12 +107,12 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, int]],
   max_cell_y = max(c[1] for c in cell_coords)
 
   # Create image
-  img_width = int((max_cell_x - min_cell_x + 1) * cell_px)
-  img_height = int((max_cell_y - min_cell_y + 1) * cell_px)
+  img_width = (max_cell_x - min_cell_x + 1) * cell_px
+  img_height = (max_cell_y - min_cell_y + 1) * cell_px
   image = Image.new('RGB', (img_width, img_height), color='white')
   draw = ImageDraw.Draw(image)
 
-  # Try multiple common font paths with a larger size
+  # Font loading code remains the same...
   font_paths = [
       "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
       "/System/Library/Fonts/Helvetica.ttc",              # macOS
@@ -125,7 +125,7 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, int]],
   font = None
   for font_path in font_paths:
     try:
-      font = ImageFont.truetype(font_path, 40)  # Increased size to 120
+      font = ImageFont.truetype(font_path, 40)
       break
     except:
       continue
@@ -136,6 +136,7 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, int]],
 
   # Draw grid cells and cell information
   for cell, stats in significant_cells.items():
+    # Convert cell coordinates to image coordinates
     rel_x = (cell.x - min_cell_x) * cell_px
     rel_y = (cell.y - min_cell_y) * cell_px
 
@@ -143,7 +144,7 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, int]],
     draw.rectangle([rel_x, rel_y, rel_x + cell_px,
                    rel_y + cell_px], outline='red')
 
-    # Prepare cell text
+    # Prepare cell text with original cell coordinates
     cell_text = f"{cell.x} {cell.y}\n{stats['point_count']}\n{stats['camera_count']}"
 
     # Calculate text position (center of cell)
@@ -160,17 +161,34 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, int]],
     # Draw text (green)
     draw.text((text_x, text_y), cell_text, font=font, fill='green')
 
-  # Draw points
+  # Draw points by mapping world coordinates to image coordinates
   for point in points:
-    px = int((point.x - x_min) / grid_size * cell_px) - min_cell_x * cell_px
-    py = int((point.y - y_min) / grid_size * cell_px) - min_cell_y * cell_px
+    # Convert point coordinates to grid cell coordinates
+    cell_x = int(point.x // grid_size) - min_cell_x
+    cell_y = int(point.y // grid_size) - min_cell_y
+
+    # Calculate position within cell
+    cell_offset_x = (point.x % grid_size) / grid_size
+    cell_offset_y = (point.y % grid_size) / grid_size
+
+    # Calculate final pixel coordinates
+    px = int(cell_x * cell_px + cell_offset_x * cell_px)
+    py = int(cell_y * cell_px + cell_offset_y * cell_px)
+
     if 0 <= px < img_width and 0 <= py < img_height:
       image.putpixel((int(px), int(py)), (0, 0, 255))  # Blue
 
-  # Draw cameras (now in indigo color: RGB(75, 0, 130))
+  # Draw cameras with the same coordinate transformation
   for camera in cameras:
-    px = int((camera.x - x_min) / grid_size * cell_px) - min_cell_x * cell_px
-    py = int((camera.y - y_min) / grid_size * cell_px) - min_cell_y * cell_px
+    cell_x = int(camera.x // grid_size) - min_cell_x
+    cell_y = int(camera.y // grid_size) - min_cell_y
+
+    cell_offset_x = (camera.x % grid_size) / grid_size
+    cell_offset_y = (camera.y % grid_size) / grid_size
+
+    px = int(cell_x * cell_px + cell_offset_x * cell_px)
+    py = int(cell_y * cell_px + cell_offset_y * cell_px)
+
     if 0 <= px < img_width and 0 <= py < img_height:
       for dx in range(-2, 3):
         for dy in range(-2, 3):
