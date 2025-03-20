@@ -89,5 +89,3 @@ def crop_colmap_model(input_path, output_path, bounding_box):
 
   # Write output
   new_model.write(model_output_dir)
-  with open(os.path.join(output_path, "cropped.txt"), "w"):
-    pass  # Empty file as marker
