@@ -1,0 +1,21 @@
+main:
+  base: "E:/ECorals/pipe/q5"
+
+plan:
+  inp_colmap_dir: "${main.base}/colmap"
+  out_stats_file: "${main.base}/stats.yaml"
+  out_plot_file: "${main.base}/plot.png"
+  grid:
+    x_step: 5
+    y_step: 10
+    x_offset: 0
+    y_offset: 0
+  min_points_per_cell: 100
+  min_cameras_per_cell: 10
+
+split:
+  inp_stats_file: "${main.base}/stats.yaml"
+  inp_colmap_dir: "${main.base}/colmap"
+  inp_ply_file: "${main.base}/point_cloud.ply"
+  out_cells_dir: "${main.base}/cells_${plan.grid.x_step}x${plan.grid.y_step}"
+  margin: 1

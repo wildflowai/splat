@@ -1,8 +1,3 @@
-"""
-This module processes COLMAP reconstructions to create a visualization of point clouds and camera positions.
-It divides the space into a grid and highlights cells with significant point density.
-"""
-
 import pycolmap
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -12,7 +7,6 @@ from core.cell import Cell
 import yaml
 import os
 import math
-import json
 import re
 
 _DEPTH_BELOW_LOWEST = 4.0  # Meters below lowest camera where no coral points are expected
@@ -79,13 +73,13 @@ def compute_grid_stats(points: List[Point3D], cameras: List[Point3D],
     point_z = [p.z for p in points]
     
     z_stats = {
-        "highest_camera_z": max(camera_z),
-        "lowest_camera_z": min(camera_z),
-        "min_z": math.floor(min(camera_z) - _DEPTH_BELOW_LOWEST),
-        "max_z": math.ceil(max(camera_z) + _HEIGHT_ABOVE_HIGHEST),
-        "median_point_z": float(np.median(point_z)),
-        "min_point_z": min(point_z),
-        "max_point_z": max(point_z)
+        "highest_camera_z": float(max(camera_z)),  # Convert to float
+        "lowest_camera_z": float(min(camera_z)),   # Convert to float
+        "min_z": float(math.floor(min(camera_z) - _DEPTH_BELOW_LOWEST)),  # Convert to float
+        "max_z": float(math.ceil(max(camera_z) + _HEIGHT_ABOVE_HIGHEST)), # Convert to float
+        "median_point_z": float(np.median(point_z)),  # Convert to float
+        "min_point_z": float(min(point_z)),           # Convert to float
+        "max_point_z": float(max(point_z))            # Convert to float
     }
 
     return grid_cells, bounds, z_stats
@@ -220,62 +214,38 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, any]],
 
 
 def save_stats(grid_stats: Dict[Cell, Dict[str, any]], z_stats: Dict[str, float], output_path: str):
-    """Save grid statistics to a JSON file, sorted by point count"""
+    """Save grid statistics to a YAML file, sorted by point count"""
     sorted_stats = sorted(
         [(cell.encode(), stats) for cell, stats in grid_stats.items()],
         key=lambda x: x[1]["point_count"],
         reverse=True
     )
 
-    # Format the data for JSON output
-    json_data = {
-        "site_stats": {
-            "z_coordinates": {
-                "camera_range": [round(z_stats['lowest_camera_z'], 2), round(z_stats['highest_camera_z'], 2)],
-                "crop_range": [round(z_stats['min_z'], 2), round(z_stats['max_z'], 2)],
-                "points_range": [round(z_stats['min_point_z'], 2), round(z_stats['max_point_z'], 2)],
-                "median_point_z": round(z_stats['median_point_z'], 2)
-            }
-        },
+    # Format the data for YAML output
+    EPS = 1e-9
+    yaml_data = {
+        "z_camera_range": [float(z_stats['lowest_camera_z']), float(z_stats['highest_camera_z'])],
+        "z_crop_range": [int(z_stats['min_z'] + EPS), int(z_stats['max_z'] + EPS)],
+        "z_points_range": [float(z_stats['min_point_z']), float(z_stats['max_point_z'])],
+        "z_median_point": float(z_stats['median_point_z']),
         "cells": []
     }
 
-    # Add cells with consistent field ordering
+    # Add cells with cell_id as the first field
     for cell_id, stats in sorted_stats:
         cell_data = {
             "cell_id": cell_id,
             "points": stats["point_count"],
             "cameras": stats["camera_count"]
         }
-        json_data["cells"].append(cell_data)
+        yaml_data["cells"].append(cell_data)
 
-    # Write to JSON file with nice formatting and arrays in single lines
+    # Write to YAML file with block style
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w') as f:
-        # First convert to JSON string with standard indentation
-        json_str = json.dumps(json_data, indent=2)
-        
-        # Function to format arrays in a single line
-        def format_array(match):
-            content = match.group(1)
-            # Remove newlines and extra spaces between array elements
-            elements = [e.strip() for e in content.split(',')]
-            return '[' + ', '.join(elements) + ']'
-        
-        # Apply the formatting to arrays
-        json_str = re.sub(r'\[\s*\n\s*([^[\]{}\n]+(,\s*\n\s*[^[\]{}\n]+)*)\s*\n\s*\]', format_array, json_str)
-        f.write(json_str)
-    
-    print(f"🟢 Statistics saved to {output_path}")
+        yaml.dump(yaml_data, f, sort_keys=False, default_flow_style=False, allow_unicode=True)
 
-    # Print a summary to console
-    print("\n📊 Site Statistics:")
-    print("\nZ-coordinate ranges:")
-    z_coords = json_data['site_stats']['z_coordinates']
-    print(f"  • Cameras: [{z_coords['camera_range'][0]:.2f}, {z_coords['camera_range'][1]:.2f}]")
-    print(f"  • Crop: [{z_coords['crop_range'][0]:.2f}, {z_coords['crop_range'][1]:.2f}]")
-    print(f"  • Points: [{z_coords['points_range'][0]:.2f}, {z_coords['points_range'][1]:.2f}]")
-    print(f"  • Median point Z: {z_coords['median_point_z']:.2f}")
+    print(f"🟢 Statistics saved to {output_path}")
 
 
 def plan(config):
@@ -285,7 +255,7 @@ def plan(config):
     Args:
         config (addict.Dict): Configuration object containing:
             - plan.inp_colmap_dir: Input COLMAP reconstruction directory
-            - plan.out_stats_file: Output path for statistics JSON file
+            - plan.out_stats_file: Output path for statistics YAML file
             - plan.out_plot_file: Output path for visualization image
             - plan.grid.x_step: X grid step size
             - plan.grid.y_step: Y grid step size
@@ -356,9 +326,6 @@ def plan(config):
     )
     os.makedirs(os.path.dirname(config.plan.out_plot_file), exist_ok=True)
     image.save(config.plan.out_plot_file)
-
-    # Save statistics
-    save_stats(filtered_stats, z_stats, config.plan.out_stats_file)
     
     # Print summary statistics
     print(f"\n📊 Found {len(grid_stats)} total cells, {len(filtered_stats)} significant")
@@ -373,4 +340,6 @@ def plan(config):
     print(f"  • Median point Z: {z_stats['median_point_z']:.2f}")
     
     print(f"\n🟢 Visualization saved to {config.plan.out_plot_file}")
-    print(f"🟢 Statistics saved to {config.plan.out_stats_file}")
+
+    # Save statistics
+    save_stats(filtered_stats, z_stats, config.plan.out_stats_file)
