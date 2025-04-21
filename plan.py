@@ -41,7 +41,8 @@ def read_camera_positions(model_path: str) -> List[Point3D]:
 
 
 def compute_grid_stats(points: List[Point3D], cameras: List[Point3D],
-                      grid_size: float) -> Tuple[Dict[Cell, Dict[str, any]], Tuple[float, float, float, float], Dict[str, float]]:
+                      x_step: int = 5, y_step: int = 5,
+                      x_offset: int = 0, y_offset: int = 0) -> Tuple[Dict[Cell, Dict[str, any]], Tuple[float, float, float, float], Dict[str, float]]:
     """Compute statistics for each grid cell and overall z-coordinate stats"""
     all_points = points + cameras
     x_coords = [p.x for p in all_points]
@@ -59,7 +60,7 @@ def compute_grid_stats(points: List[Point3D], cameras: List[Point3D],
 
     # Collect points statistics
     for point in points:
-        cell = Cell.fromPoint(point.x, point.y, grid_size)
+        cell = Cell.fromPoint(point.x, point.y, x_step, y_step, x_offset, y_offset)
         grid_cells[cell]["point_count"] += 1
         grid_cells[cell]["points_z"].append(point.z)
         if grid_cells[cell]["bbox"] is None:
@@ -67,7 +68,7 @@ def compute_grid_stats(points: List[Point3D], cameras: List[Point3D],
 
     # Collect camera statistics
     for camera in cameras:
-        cell = Cell.fromPoint(camera.x, camera.y, grid_size)
+        cell = Cell.fromPoint(camera.x, camera.y, x_step, y_step, x_offset, y_offset)
         grid_cells[cell]["camera_count"] += 1
         grid_cells[cell]["cameras_z"].append(camera.z)
         if grid_cells[cell]["bbox"] is None:
@@ -105,8 +106,8 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, any]],
                         points: List[Point3D],
                         cameras: List[Point3D],
                         bounds: Tuple[float, float, float, float],
-                        grid_size: float,
-                        cell_px: int = 300,
+                        grid_config: any,
+                        cell_width: int = 300,
                         min_points_per_cell: int = None) -> Image.Image:
     """Create visualization of the point cloud and grid"""
     x_min, x_max, y_min, y_max = bounds
@@ -126,8 +127,12 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, any]],
     min_cell_y = min(c[1] for c in cell_coords)
     max_cell_y = max(c[1] for c in cell_coords)
 
-    img_width = (max_cell_x - min_cell_x + 1) * cell_px
-    img_height = (max_cell_y - min_cell_y + 1) * cell_px
+    # Calculate cell dimensions maintaining aspect ratio
+    aspect_ratio = grid_config.y_step / grid_config.x_step
+    cell_height = int(cell_width * aspect_ratio)
+
+    img_width = (max_cell_x - min_cell_x + 1) * cell_width
+    img_height = (max_cell_y - min_cell_y + 1) * cell_height
     image = Image.new('RGB', (img_width, img_height), color='white')
     draw = ImageDraw.Draw(image)
 
@@ -152,38 +157,64 @@ def create_visualization(grid_stats: Dict[Cell, Dict[str, any]],
         font = ImageFont.load_default()
         print("Warning: Could not load TrueType font, using default font")
 
+    # Draw cells
     for cell, stats in significant_cells.items():
-        rel_x = (cell.x - min_cell_x) * cell_px
-        rel_y = (cell.y - min_cell_y) * cell_px
+        # Convert to image coordinates (flip y-axis)
+        cell_img_x = (cell.x - min_cell_x) * cell_width
+        cell_img_y = img_height - ((cell.y - min_cell_y + 1) * cell_height)
 
-        draw.rectangle([rel_x, rel_y, rel_x + cell_px,
-                       rel_y + cell_px], outline='red')
+        # Draw cell rectangle
+        draw.rectangle([
+            cell_img_x, cell_img_y,
+            cell_img_x + cell_width, cell_img_y + cell_height
+        ], outline='red')
 
+        # Draw cell text
         cell_text = f"{cell.x} {cell.y}\n{stats['point_count']}\n{stats['camera_count']}"
         text_bbox = draw.textbbox((0, 0), cell_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        text_x = rel_x + (cell_px - text_width) // 2
-        text_y = rel_y + (cell_px - text_height) // 2
+        text_x = cell_img_x + (cell_width - text_width) // 2
+        text_y = cell_img_y + (cell_height - text_height) // 2
 
         for dx, dy in [(-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]:
             draw.text((text_x + dx, text_y + dy), cell_text, font=font, fill='black')
         draw.text((text_x, text_y), cell_text, font=font, fill='green')
 
+    # Draw points
     for point in points:
-        px, py = world_to_image_coords(
-            point.x, point.y, grid_size, min_cell_x, min_cell_y, cell_px)
-        if 0 <= px < img_width and 0 <= py < img_height:
-            image.putpixel((px, py), (0, 0, 255))
+        cell = Cell.fromPoint(point.x, point.y, grid_config.x_step, grid_config.y_step,
+                            grid_config.x_offset, grid_config.y_offset)
+        if cell in significant_cells:
+            # Calculate relative position within the cell
+            rel_x = (point.x - (cell.x * grid_config.x_step + grid_config.x_offset)) / grid_config.x_step
+            rel_y = (point.y - (cell.y * grid_config.y_step + grid_config.y_offset)) / grid_config.y_step
+            
+            # Convert to image coordinates (flip y-axis)
+            px = int((cell.x - min_cell_x) * cell_width + rel_x * cell_width)
+            py = int(img_height - ((cell.y - min_cell_y) * cell_height + rel_y * cell_height))
+            
+            if 0 <= px < img_width and 0 <= py < img_height:
+                image.putpixel((px, py), (0, 0, 255))
 
+    # Draw cameras
     for camera in cameras:
-        px, py = world_to_image_coords(
-            camera.x, camera.y, grid_size, min_cell_x, min_cell_y, cell_px)
-        if 0 <= px < img_width and 0 <= py < img_height:
-            for dx in range(-2, 3):
-                for dy in range(-2, 3):
-                    if 0 <= px + dx < img_width and 0 <= py + dy < img_height:
-                        image.putpixel((px + dx, py + dy), (75, 0, 130))
+        cell = Cell.fromPoint(camera.x, camera.y, grid_config.x_step, grid_config.y_step,
+                            grid_config.x_offset, grid_config.y_offset)
+        if cell in significant_cells:
+            # Calculate relative position within the cell
+            rel_x = (camera.x - (cell.x * grid_config.x_step + grid_config.x_offset)) / grid_config.x_step
+            rel_y = (camera.y - (cell.y * grid_config.y_step + grid_config.y_offset)) / grid_config.y_step
+            
+            # Convert to image coordinates (flip y-axis)
+            px = int((cell.x - min_cell_x) * cell_width + rel_x * cell_width)
+            py = int(img_height - ((cell.y - min_cell_y) * cell_height + rel_y * cell_height))
+            
+            if 0 <= px < img_width and 0 <= py < img_height:
+                for dx in range(-2, 3):
+                    for dy in range(-2, 3):
+                        if 0 <= px + dx < img_width and 0 <= py + dy < img_height:
+                            image.putpixel((px + dx, py + dy), (75, 0, 130))
 
     return image
 
@@ -211,10 +242,8 @@ def save_stats(grid_stats: Dict[Cell, Dict[str, any]], z_stats: Dict[str, float]
 
     # Add cells with consistent field ordering
     for cell_id, stats in sorted_stats:
-        min_x, min_y, max_x, max_y = stats["bbox"]
         cell_data = {
             "cell_id": cell_id,
-            "bbox": [min_x, max_x, min_y, max_y],
             "points": stats["point_count"],
             "cameras": stats["camera_count"]
         }
@@ -258,7 +287,10 @@ def plan(config):
             - plan.inp_colmap_dir: Input COLMAP reconstruction directory
             - plan.out_stats_file: Output path for statistics JSON file
             - plan.out_plot_file: Output path for visualization image
-            - plan.grid_step: Grid size in meters
+            - plan.grid.x_step: X grid step size
+            - plan.grid.y_step: Y grid step size
+            - plan.grid.x_offset: X grid offset
+            - plan.grid.y_offset: Y grid offset
             - plan.min_points_per_cell: Minimum number of points per cell
             - plan.min_cameras_per_cell: Minimum number of cameras per cell
     """
@@ -267,13 +299,18 @@ def plan(config):
         'inp_colmap_dir',
         'out_stats_file',
         'out_plot_file',
-        'grid_step',
+        'grid',
         'min_points_per_cell',
         'min_cameras_per_cell'
     ]
     
     for param in required_params:
         assert hasattr(config.plan, param), f"Missing required parameter in config: plan.{param}"
+    
+    # Validate grid parameters
+    grid_params = ['x_step', 'y_step', 'x_offset', 'y_offset']
+    for param in grid_params:
+        assert hasattr(config.plan.grid, param), f"Missing grid parameter in config: plan.grid.{param}"
     
     # Read point cloud and camera positions
     colmap_dir = config.plan.inp_colmap_dir
@@ -283,8 +320,17 @@ def plan(config):
     points = read_point_cloud(colmap_dir)
     cameras = read_camera_positions(colmap_dir)
     
+    # Get grid parameters
+    grid_config = config.plan.grid
+    
     # Compute grid statistics
-    grid_stats, bounds, z_stats = compute_grid_stats(points, cameras, config.plan.grid_step)
+    grid_stats, bounds, z_stats = compute_grid_stats(
+        points, cameras, 
+        x_step=grid_config.x_step,
+        y_step=grid_config.y_step,
+        x_offset=grid_config.x_offset,
+        y_offset=grid_config.y_offset
+    )
 
     # Filter cells based on minimum requirements
     filtered_stats = {
@@ -305,7 +351,7 @@ def plan(config):
         points, 
         cameras, 
         bounds, 
-        config.plan.grid_step,
+        grid_config=grid_config,
         min_points_per_cell=config.plan.min_points_per_cell
     )
     os.makedirs(os.path.dirname(config.plan.out_plot_file), exist_ok=True)
