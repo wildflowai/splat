@@ -101,7 +101,7 @@ impl Patch {
     }
 
     #[classmethod]
-    fn with_bounds(_cls: &PyType, output_file: String, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+    fn with_bounds(_cls: &Bound<'_, PyType>, output_file: String, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
         Patch {
             min_x,
             min_y,
@@ -312,7 +312,7 @@ pub fn write_colmap_file(output_path: &str, points: &[Point3D], indices: &[usize
 #[pyfunction]
 pub fn split_ply(config: &Config) -> PyResult<PyObject> {
     Python::with_gil(|py| {
-        let results = PyDict::new(py);
+        let results = PyDict::new_bound(py);
         
         // Read PLY file
         let points = read_ply_file(&config.input_file, config)

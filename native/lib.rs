@@ -1,10 +1,10 @@
-pub mod split;
-
 use pyo3::prelude::*;
+
+mod split;
 
 /// The main PyO3 module for wildflow.splat
 #[pymodule]
-fn _core(_py: Python, m: &PyModule) -> PyResult<()> {
+fn wildflow_splat(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Export split functionality
     m.add_class::<split::Config>()?;
     m.add_class::<split::Patch>()?;
