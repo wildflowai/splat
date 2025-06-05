@@ -26,7 +26,7 @@ jobs:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --skip pypy
           sccache: "true"
           manylinux: auto
       - name: Upload wheels
@@ -51,7 +51,7 @@ jobs:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --skip pypy
           sccache: "true"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -75,7 +75,7 @@ jobs:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist --find-interpreter --skip pypy
           sccache: "true"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
