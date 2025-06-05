@@ -4,7 +4,7 @@ mod split;
 
 /// The main PyO3 module for wildflow.splat
 #[pymodule]
-fn wildflow_splat(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Export split functionality
     m.add_class::<split::Config>()?;
     m.add_class::<split::Patch>()?;
