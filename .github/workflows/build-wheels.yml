@@ -22,6 +22,8 @@ jobs:
           python-version: "3.11"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
@@ -45,6 +47,8 @@ jobs:
           python-version: "3.11"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
@@ -67,6 +71,8 @@ jobs:
           python-version: "3.11"
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
@@ -83,6 +89,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build sdist
         uses: PyO3/maturin-action@v1
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         with:
           command: sdist
           args: --out dist

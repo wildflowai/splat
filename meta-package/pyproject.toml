@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wildflow"
-version = "0.1.0"
+version = "0.1.1"
 description = "Modeling natural ecosystems"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "wildflow-splat>=0.1.0",
+    "wildflow-splat>=0.1.1",
 ]
 
 [project.urls]
