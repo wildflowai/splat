@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wildflow"
+version = "0.1.0"
+description = "Modeling natural ecosystems"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["coral-reefs","computer-vision", "photogrammetry", "3d-reconstruction", "point-cloud", "gaussian-splatting"]
+authors = [
+    {name = "wildflow", email = "sergei@wildflow.ai"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "wildflow-splat>=0.1.0",
+]
+
+[project.urls]
+repository = "https://github.com/wildflowai/wildflow"
+documentation = "https://docs.wildflow.ai"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=22.0",
+    "ruff>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["wildflow*"] 

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "wildflow-splat"
+version = "0.1.0"
+description = "Fast PLY point cloud processing for 3D Gaussian splatting workflows"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+keywords = ["ply", "point-cloud", "3d-gaussian-splatting", "colmap", "photogrammetry", "computer-vision"]
+authors = [
+    {name = "Wildflow AI", email = "info@wildflow.ai"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "indicatif>=0.17.0",
+]
+
+[project.urls]
+repository = "https://github.com/wildflowai/wildflow-splat"
+documentation = "https://docs.wildflow.ai"
+
+[project.optional-dependencies]
+dev = [
+    "maturin>=1.0",
+    "pytest>=7.0",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "wildflow.splat._core"
+python-source = "." 
