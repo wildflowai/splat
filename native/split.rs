@@ -312,7 +312,7 @@ pub fn write_colmap_file(output_path: &str, points: &[Point3D], indices: &[usize
 #[pyfunction]
 pub fn split_ply(config: &Config) -> PyResult<PyObject> {
     Python::with_gil(|py| {
-        let results = PyDict::new_bound(py);
+        let results = PyDict::new(py);
         
         // Read PLY file
         let points = read_ply_file(&config.input_file, config)
