@@ -31,12 +31,12 @@ Loading from COLMAP:
     >>> result = patches(cameras)
 """
 
-from typing import List, Tuple, Union, NamedTuple
+from typing import List, Tuple, Union, NamedTuple, Sequence
 from dataclasses import dataclass
 import math
 
-# Simple data structures
-Point = Union[Tuple[float, float], NamedTuple]
+# Simple data structures  
+Point = Tuple[float, float]
 
 @dataclass(frozen=True)
 class BoundingBox:
@@ -55,7 +55,7 @@ class BoundingBox:
         return self.max_y - self.min_y
 
 
-def patches(camera_positions: List[Point], 
+def patches(camera_positions: Sequence[Point], 
            max_cameras: int = 700,
            buffer_meters: float = 1.5, 
            target_bins: int = 100) -> List[BoundingBox]:
@@ -79,18 +79,7 @@ def patches(camera_positions: List[Point],
     if not camera_positions:
         raise ValueError("Camera positions cannot be empty")
     
-    if len(camera_positions) <= max_cameras:
-        # All cameras fit in one patch
-        xs = [p[0] for p in camera_positions]
-        ys = [p[1] for p in camera_positions]
-        return [BoundingBox(
-            min_x=min(xs) - buffer_meters,
-            max_x=max(xs) + buffer_meters,
-            min_y=min(ys) - buffer_meters,
-            max_y=max(ys) + buffer_meters
-        )]
-    
-    # Run the complex partitioning algorithm
+    # The DP algorithm handles all cases, including single patch
     return _partition_with_dp(camera_positions, max_cameras, buffer_meters, target_bins)
 
 
@@ -251,14 +240,76 @@ def _pack_y_direction(cameras_in_x_range: List[_Point2D],
     
     return _DpState(len(patches), total_cost, patches)
 
-def _partition_with_dp(camera_positions: List[Point],
+def _partition_1d_horizontal(cameras: List[_Point2D], max_cameras: int, buffer_meters: float,
+                           fixed_y: float, min_x: float, max_x: float) -> List[BoundingBox]:
+    """Partition cameras on horizontal line by X coordinate."""
+    cameras_by_x = sorted(cameras, key=lambda p: p.x)
+    patches = []
+    
+    # Ensure minimum patch height for horizontal lines
+    min_height = max(buffer_meters * 2, 0.1)  # At least 0.1 units tall
+    
+    i = 0
+    while i < len(cameras_by_x):
+        # Take up to max_cameras
+        patch_cameras = cameras_by_x[i:i+max_cameras]
+        patch_min_x = patch_cameras[0].x
+        patch_max_x = patch_cameras[-1].x
+        
+        # Ensure minimum width for patches
+        center_x = (patch_min_x + patch_max_x) / 2
+        width_with_buffer = max(patch_max_x - patch_min_x + 2*buffer_meters, 0.1)
+        
+        patches.append(BoundingBox(
+            min_x=center_x - width_with_buffer/2,
+            max_x=center_x + width_with_buffer/2,
+            min_y=fixed_y - min_height/2,
+            max_y=fixed_y + min_height/2
+        ))
+        
+        i += max_cameras
+    
+    return patches
+
+def _partition_1d_vertical(cameras: List[_Point2D], max_cameras: int, buffer_meters: float,
+                         fixed_x: float, min_y: float, max_y: float) -> List[BoundingBox]:
+    """Partition cameras on vertical line by Y coordinate."""
+    cameras_by_y = sorted(cameras, key=lambda p: p.y)
+    patches = []
+    
+    # Ensure minimum patch width for vertical lines
+    min_width = max(buffer_meters * 2, 0.1)  # At least 0.1 units wide
+    
+    i = 0
+    while i < len(cameras_by_y):
+        # Take up to max_cameras
+        patch_cameras = cameras_by_y[i:i+max_cameras]
+        patch_min_y = patch_cameras[0].y
+        patch_max_y = patch_cameras[-1].y
+        
+        # Ensure minimum height for patches
+        center_y = (patch_min_y + patch_max_y) / 2
+        height_with_buffer = max(patch_max_y - patch_min_y + 2*buffer_meters, 0.1)
+        
+        patches.append(BoundingBox(
+            min_x=fixed_x - min_width/2,
+            max_x=fixed_x + min_width/2,
+            min_y=center_y - height_with_buffer/2,
+            max_y=center_y + height_with_buffer/2
+        ))
+        
+        i += max_cameras
+    
+    return patches
+
+def _partition_with_dp(camera_positions: Sequence[Point],
                       max_cameras: int,
                       buffer_meters: float, 
                       target_bins: int) -> List[BoundingBox]:
     """Run the dynamic programming algorithm to find optimal partitioning."""
     
     # Convert to internal format
-    cameras = [_Point2D(p[0], p[1]) for p in camera_positions]
+    cameras = [_Point2D(float(p[0]), float(p[1])) for p in camera_positions]
     cameras_by_x = sorted(cameras, key=lambda p: p.x)
     
     # Calculate bounds
@@ -267,7 +318,46 @@ def _partition_with_dp(camera_positions: List[Point],
     min_y = min(cam.y for cam in cameras)
     max_y = max(cam.y for cam in cameras)
     
-    # Create binners for X and Y axes
+    # Handle edge case: all cameras at same position
+    if min_x == max_x and min_y == max_y:
+        # All cameras at exact same point - create single patch
+        return [BoundingBox(
+            min_x=min_x - buffer_meters,
+            max_x=max_x + buffer_meters,
+            min_y=min_y - buffer_meters,
+            max_y=max_y + buffer_meters
+        )]
+    
+    # Handle edge case: cameras in a line (1D case)
+    # Only use single patch if cameras fit within max_cameras constraint
+    if min_x == max_x and len(cameras) <= max_cameras:
+        # All cameras on vertical line and fit in one patch
+        return [BoundingBox(
+            min_x=min_x - buffer_meters,
+            max_x=max_x + buffer_meters,
+            min_y=min_y - buffer_meters,
+            max_y=max_y + buffer_meters
+        )]
+    
+    if min_y == max_y and len(cameras) <= max_cameras:
+        # All cameras on horizontal line and fit in one patch
+        return [BoundingBox(
+            min_x=min_x - buffer_meters,
+            max_x=max_x + buffer_meters,
+            min_y=min_y - buffer_meters,
+            max_y=max_y + buffer_meters
+        )]
+    
+    # Handle 1D cases that exceed max_cameras - need to partition along the line
+    if min_x == max_x:
+        # Vertical line - partition by Y coordinate
+        return _partition_1d_vertical(cameras, max_cameras, buffer_meters, min_x, min_y, max_y)
+    
+    if min_y == max_y:
+        # Horizontal line - partition by X coordinate  
+        return _partition_1d_horizontal(cameras, max_cameras, buffer_meters, min_y, min_x, max_x)
+    
+    # Normal 2D case - create binners for X and Y axes
     x_binner = _Binner(min_x, max_x, target_bins)
     y_binner = _Binner(min_y, max_y, target_bins)
     
