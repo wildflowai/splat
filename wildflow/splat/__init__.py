@@ -6,7 +6,7 @@ point cloud processing for 3D Gaussian splatting workflows.
 """
 
 # Core partitioning functionality
-from .patches import Point2D, BoundingBox, PartitionOptions, patches
+from .patches import patches, BoundingBox
 
 # PLY processing functionality
 from ._core import Config, Patch
@@ -16,10 +16,8 @@ __version__ = "0.1.0"
 
 # Public API
 __all__ = [
-    "Point2D",
-    "BoundingBox", 
-    "PartitionOptions",
     "patches",
+    "BoundingBox", 
     "Config",
     "Patch", 
     "split_point_cloud",
