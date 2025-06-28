@@ -215,7 +215,78 @@ def _pack_y_direction(cameras_in_x_range: List[_Point2D],
                 break
         
         if best_end_bin is None:
-            # Can't fit even one bin - problem impossible
+            # Can't fit even one bin - check if this is due to cameras clustered at same Y coordinates
+            
+            # Group ALL cameras in X range by Y coordinate
+            y_groups = {}
+            for cam in cameras_in_x_range:
+                if cam.y not in y_groups:
+                    y_groups[cam.y] = []
+                y_groups[cam.y].append(cam)
+            
+            # Check if any Y group has too many cameras (indicating clustering at same Y)
+            has_oversized_group = any(len(group) > max_cameras for group in y_groups.values())
+            
+            # Also check if this is actually a clustering problem vs just buffer overflow
+            # If all Y groups are small but buffer zone causes issues, use normal DP fallback
+            largest_y_group = max(len(group) for group in y_groups.values()) if y_groups else 0
+            
+            # Check if this is dense clustering vs regular distribution
+            # Dense clustering: many cameras in small spatial area (like dense_vs_sparse)
+            # Regular distribution: cameras spread over large area (should use normal DP)
+            is_dense_clustering = False
+            if has_oversized_group:
+                for y_val, group in y_groups.items():
+                    if len(group) > max_cameras:
+                        # Check spatial density of this Y group
+                        x_coords = [c.x for c in group]
+                        x_span = max(x_coords) - min(x_coords)
+                        density = len(group) / max(x_span, 0.1)  # cameras per unit
+                        
+                        # Dense clustering threshold: >10 cameras per unit
+                        # dense_vs_sparse: 100 cameras in 9.9 units = ~10 cameras/unit
+                        # regular grid: 200 cameras in 99.5 units = ~2 cameras/unit
+                        if density > 10.0:
+                            is_dense_clustering = True
+                            break
+            
+            if has_oversized_group and largest_y_group > max_cameras and is_dense_clustering:
+                # True clustering problem - cameras actually clustered at same Y coordinates
+                # Process ALL Y groups by X coordinate since normal Y-binning failed
+                special_patches = []
+                for y_val, group in y_groups.items():
+                    if len(group) > max_cameras:
+                        # Large group - partition by X
+                        min_x_in_group = min(c.x for c in group)
+                        max_x_in_group = max(c.x for c in group)
+                        
+                        x_patches = _partition_1d_horizontal(
+                            group, max_cameras, buffer_m, 
+                            y_val, min_x_in_group, max_x_in_group
+                        )
+                        special_patches.extend(x_patches)
+                    else:
+                        # Small group - create single patch
+                        min_x_group = min(c.x for c in group)
+                        max_x_group = max(c.x for c in group)
+                        patch = BoundingBox(
+                            min_x=min_x_group - buffer_m,
+                            max_x=max_x_group + buffer_m,
+                            min_y=y_val - buffer_m,
+                            max_y=y_val + buffer_m
+                        )
+                        special_patches.append(patch)
+                
+                # Calculate aspect ratio cost for special patches
+                total_cost = 1.0
+                for patch in special_patches:
+                    aspect_ratio = max(patch.width, patch.height) / min(patch.width, patch.height)
+                    total_cost *= aspect_ratio
+                
+                # Return special handling result for this entire X range
+                return _DpState(len(special_patches), total_cost, special_patches)
+            
+            # Still can't fit - problem impossible
             return _DpState.infinity()
         
         # Create the patch

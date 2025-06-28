@@ -130,25 +130,172 @@ def test_patches_zero_buffer_creates_tight_patches():
     assert result[0].min_y == 0.0
     assert result[0].max_y == 10.0
 
+# ------------------ BASIC FUNCTIONALITY ------------------
+
+def test_single_patch_simple_case():
+    """Single patch with a few cameras, all within limits."""
+    cameras = [(0, 0), (1, 1), (2, 2)]
+    result = patches(cameras, max_cameras=10, buffer_meters=1.0)
+    assert len(result) == 1
+    bbox = result[0]
+    assert bbox.min_x <= -1 and bbox.max_x >= 3
+    assert bbox.min_y <= -1 and bbox.max_y >= 3
+
+def test_multiple_patches_simple_line():
+    """Simple line of cameras that exceeds max_cameras."""
+    cameras = [(i, 0) for i in range(6)]
+    result = patches(cameras, max_cameras=3, buffer_meters=0.5)
+    assert len(result) >= 2
+    total_covered = sum([(bbox.max_x - bbox.min_x) * (bbox.max_y - bbox.min_y) for bbox in result])
+    assert all([(bbox.max_x - bbox.min_x) > 0 for bbox in result])
+
+def test_clustered_cameras_two_groups():
+    """Two clusters of 50 cameras each, should produce 2 patches."""
+    cameras = [(0 + i * 0.1, 0 + j * 0.1) for i in range(5) for j in range(10)] + \
+              [(100 + i * 0.1, 100 + j * 0.1) for i in range(5) for j in range(10)]
+    result = patches(cameras, max_cameras=60, buffer_meters=2.0)
+    assert len(result) == 2
+    assert all([len([pt for pt in cameras if bbox.min_x <= pt[0] <= bbox.max_x and bbox.min_y <= pt[1] <= bbox.max_y]) <= 60 for bbox in result])
+
+# ------------------ GEOMETRIC EDGE CASES ------------------
+
+def test_single_camera():
+    """One camera should still produce one valid patch."""
+    cameras = [(10, 10)]
+    result = patches(cameras, max_cameras=5, buffer_meters=1.0)
+    assert len(result) == 1
+    bbox = result[0]
+    assert bbox.min_x <= 9 and bbox.max_x >= 11
+
+
+def test_all_same_position():
+    """All cameras in the exact same spot."""
+    cameras = [(5, 5)] * 10
+    result = patches(cameras, max_cameras=10, buffer_meters=0.5)
+    assert len(result) == 1
+    bbox = result[0]
+    assert bbox.min_x <= 4.5 and bbox.max_x >= 5.5
+
+
+def test_horizontal_line():
+    cameras = [(i, 0) for i in range(10)]
+    result = patches(cameras, max_cameras=5, buffer_meters=1.0)
+    assert all([(bbox.max_y - bbox.min_y) > 0 for bbox in result])
+
+
+def test_vertical_line():
+    cameras = [(0, i) for i in range(10)]
+    result = patches(cameras, max_cameras=5, buffer_meters=1.0)
+    assert all([(bbox.max_x - bbox.min_x) > 0 for bbox in result])
+
+
+def test_negative_coordinates():
+    cameras = [(-10, -10), (-5, -5), (0, 0)]
+    result = patches(cameras, max_cameras=10, buffer_meters=1.0)
+    assert len(result) == 1
+    bbox = result[0]
+    assert bbox.min_x <= -11 and bbox.max_y >= 1
+
+# ------------------ CONSTRAINT EDGE CASES ------------------
+
+def test_exact_max():
+    cameras = [(i, 0) for i in range(10)]
+    result = patches(cameras, max_cameras=10, buffer_meters=1.0)
+    assert len(result) == 1
+
+def test_one_over_max():
+    cameras = [(i, 0) for i in range(11)]
+    result = patches(cameras, max_cameras=10, buffer_meters=1.0)
+    assert len(result) >= 2
+
+
+def test_zero_buffer():
+    cameras = [(0, 0), (1, 1), (2, 2)]
+    result = patches(cameras, max_cameras=10, buffer_meters=0.0)
+    bbox = result[0]
+    assert bbox.min_x <= 0 and bbox.max_x >= 2
+
+
+def test_large_buffer_small_area():
+    cameras = [(1, 1), (1.2, 1.2), (1.1, 1.3)]
+    result = patches(cameras, max_cameras=10, buffer_meters=5.0)
+    assert len(result) == 1
+    bbox = result[0]
+    assert (bbox.max_x - bbox.min_x) > 9
+
+# ------------------ STRESS TESTS ------------------
+
+def test_many_clusters():
+    cameras = []
+    for i in range(10):
+        cameras.extend([(i * 20 + x * 0.1, i * 20 + y * 0.1) for x in range(3) for y in range(3)])
+    result = patches(cameras, max_cameras=9, buffer_meters=1.0)
+    assert len(result) == 10
+
+
+def test_dense_vs_sparse():
+    dense = [(i * 0.1, 0) for i in range(100)]
+    sparse = [(i * 10, 10) for i in range(100)]
+    result = patches(dense + sparse, max_cameras=50, buffer_meters=1.0)
+    assert len(result) >= 3
+
+
+def test_l_shaped():
+    cameras = [(i, 0) for i in range(10)] + [(9, j) for j in range(1, 10)]
+    result = patches(cameras, max_cameras=5, buffer_meters=1.0)
+    assert len(result) >= 2
+
+
+def test_random_distribution():
+    import random
+    random.seed(42)
+    cameras = [(random.uniform(0, 100), random.uniform(0, 100)) for _ in range(200)]
+    result = patches(cameras, max_cameras=50, buffer_meters=2.0)
+    assert all([len([pt for pt in cameras if bbox.min_x <= pt[0] <= bbox.max_x and bbox.min_y <= pt[1] <= bbox.max_y]) <= 50 for bbox in result])
+
+# ------------------ REAL-WORLD-LIKE ------------------
+
+def test_realistic_grid():
+    cameras = [(i, j) for i in range(10) for j in range(10)]  # 100 cameras
+    result = patches(cameras, max_cameras=20, buffer_meters=1.0)
+    assert len(result) >= 5
+    covered = set()
+    for bbox in result:
+        for pt in cameras:
+            if bbox.min_x <= pt[0] <= bbox.max_x and bbox.min_y <= pt[1] <= bbox.max_y:
+                covered.add(pt)
+    assert len(covered) == len(cameras)
+
+
+def test_large_scale_scene():
+    cameras = [(i * 0.5, j * 0.5) for i in range(200) for j in range(5)]
+    result = patches(cameras, max_cameras=100, buffer_meters=2.0)
+    assert all([len([pt for pt in cameras if bbox.min_x <= pt[0] <= bbox.max_x and bbox.min_y <= pt[1] <= bbox.max_y]) <= 100 for bbox in result])
+
 
 if __name__ == "__main__":
-    print("Running basic tests...")
+    print("Running all tests...")
     
-    try:
-        test_patches_single_camera_returns_one_patch()
-        print("✅ Single camera test passed")
-        
-        test_patches_few_cameras_returns_one_patch()
-        print("✅ Few cameras test passed")
-        
-        test_patches_exactly_max_cameras_returns_one_patch()
-        print("✅ Exact max cameras test passed")
-        
-        test_patches_zero_buffer_creates_tight_patches()
-        print("✅ Zero buffer test passed")
-        
-        print("\n🎉 All basic tests passed!")
-        
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        raise 
+    # Get all test functions from current module using globals()
+    import sys
+    current_module = sys.modules[__name__]
+    test_functions = [getattr(current_module, name) for name in dir(current_module) 
+                     if name.startswith('test_') and callable(getattr(current_module, name))]
+    
+    passed = 0
+    failed = 0
+    
+    for test_func in test_functions:
+        try:
+            test_func()
+            print(f"✅ {test_func.__name__} passed")
+            passed += 1
+        except Exception as e:
+            print(f"❌ {test_func.__name__} failed: {e}")
+            failed += 1
+    
+    print(f"\n🎉 Results: {passed} passed, {failed} failed")
+    
+    if failed > 0:
+        print("💡 Tip: Run with 'python -m pytest tests/test_patches.py -v' for better output")
+        exit(1) 
