@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "wildflow-splat"
-version = "0.1.3"
+version = "0.1.4"
 description = "Fast PLY point cloud processing for 3D Gaussian splatting workflows"
 readme = "README.md"
 requires-python = ">=3.8"

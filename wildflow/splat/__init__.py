@@ -12,7 +12,7 @@ from .patches import patches, BoundingBox
 from ._core import Config, Patch
 from .split import split_point_cloud
 
-__version__ = "0.1.0"
+__version__ = "0.1.4"
 
 # Public API
 __all__ = [
