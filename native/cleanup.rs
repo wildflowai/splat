@@ -9,88 +9,41 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+fn default_min_neighbors() -> usize { 10 }
+fn default_radius() -> f64 { 0.1 }
+
 /// Configuration for cleaning a PLY point cloud.
 ///
 /// This struct holds all the parameters that control the behavior of the cleanup process,
 /// including input/output file paths, and various filtering criteria.
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[pyclass]
-pub struct CleanConfig {
-    /// The absolute path to the input PLY file containing the Gaussian splats to be cleaned.
-    #[pyo3(get, set)]
+struct CleanConfig {
     pub input_file: String,
-    /// The absolute path where the cleaned (kept) Gaussian splats will be saved.
-    #[pyo3(get, set)]
     pub output_file: String,
-    /// Optional: If provided, splats that are discarded by any filter will be written to this PLY file.
-    /// If `None` (default), discarded splats are not saved.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub discarded_file: Option<String>,
-    /// Optional: The minimum X coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub min_x: Option<f64>,
-    /// Optional: The minimum Y coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub min_y: Option<f64>,
-    /// Optional: The minimum Z coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub min_z: Option<f64>,
-    /// Optional: The maximum X coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub max_x: Option<f64>,
-    /// Optional: The maximum Y coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub max_y: Option<f64>,
-    /// Optional: The maximum Z coordinate for the bounding box filter.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub max_z: Option<f64>,
-    /// The maximum allowed "area" for a Gaussian splat. Splats with an area greater than or equal to this value will be discarded.
-    /// The area is calculated using the "super splats" method: `exp(scale_0)^2 + exp(scale_1)^2 + exp(scale_2)^2`.
-    #[pyo3(get, set)]
     pub max_area: f64,
-    /// Optional: The absolute path to a COLMAP `points3D.bin` file. If provided, the proximity filter will be enabled.
-    #[pyo3(get, set)]
+    #[serde(default)]
     pub colmap_points_file: Option<String>,
-    /// The minimum number of neighboring COLMAP points required within `radius` for a Gaussian splat to be kept.
-    /// Only applicable if `colmap_points_file` is provided. Defaults to 10.
-    #[pyo3(get, set)]
+    #[serde(default = "default_min_neighbors")]
     pub min_neighbors: usize,
-    /// The radius within which to search for neighboring COLMAP points. Only applicable if `colmap_points_file` is provided.
-    /// Must be a positive value. Defaults to 0.1.
-    #[pyo3(get, set)]
+    #[serde(default = "default_radius")]
     pub radius: f64,
 }
 
-#[pymethods]
-impl CleanConfig {
-    #[new]
-    /// Creates a new `CleanConfig` instance.
-    ///
-    /// Only `input_file`, `output_file`, and `max_area` are required during initialization.
-    /// Other filtering parameters can be set as attributes on the `CleanConfig` object after creation.
-    ///
-    /// Args:
-    ///     input_file (str): The absolute path to the input PLY file.
-    ///     output_file (str): The absolute path for the output PLY file containing kept splats.
-    ///     max_area (float): The maximum allowed area for a splat to be kept.
-    fn new(input_file: String, output_file: String, max_area: f64) -> Self {
-        CleanConfig {
-            input_file,
-            output_file,
-            discarded_file: None,
-            min_x: None,
-            min_y: None,
-            min_z: None,
-            max_x: None,
-            max_y: None,
-            max_z: None,
-            max_area,
-            colmap_points_file: None,
-            min_neighbors: 10,
-            radius: 0.1,
-        }
-    }
-}
+
 
 #[derive(Debug, Clone, Copy)]
 struct PropertyLayout {
@@ -225,8 +178,7 @@ fn write_ply_data(
     Ok(())
 }
 
-#[pyfunction]
-pub fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
+fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
     let start_time = Instant::now();
     println!("Starting PLY cleanup process...");
 
@@ -399,4 +351,9 @@ pub fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
     Ok(())
 }
 
-
+#[pyfunction]
+pub fn cleanup_splats(config_json: &str) -> PyResult<()> {
+    let config: CleanConfig = serde_json::from_str(config_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+    cleanup_ply(&config)
+}
