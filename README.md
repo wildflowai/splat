@@ -15,7 +15,12 @@ pip install wildflow
 
 ### From GitHub Releases (pre-compiled wheels)
 
-#### Option 1: Latest release (recommended)
+**Note**: Pre-compiled wheels are only available for releases created after the workflow was updated. If no wheels are available, use the PyPI or source installation methods above.
+
+#### Check if wheels are available
+Visit [GitHub Releases](https://github.com/wildflowai/splat/releases) and look for `.whl` files in the assets section.
+
+#### If wheels are available:
 ```bash
 # Get the latest release for your platform
 curl -s https://api.github.com/repos/wildflowai/splat/releases/latest | \
@@ -39,16 +44,15 @@ curl -s https://api.github.com/repos/wildflowai/splat/releases/latest | \
   xargs pip install
 ```
 
-#### Option 2: Manual download
-1. Go to [GitHub Releases](https://github.com/wildflowai/splat/releases/latest)
-2. Download the wheel file for your platform
-3. Install: `pip install path/to/downloaded/wheel.whl`
-
-#### Option 3: PowerShell (Windows)
+#### PowerShell (Windows)
 ```powershell
 $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/wildflowai/splat/releases/latest"
 $wheel = $latest.assets | Where-Object { $_.name -like "*win_amd64.whl" } | Select-Object -First 1
-pip install $wheel.browser_download_url
+if ($wheel) {
+    pip install $wheel.browser_download_url
+} else {
+    Write-Host "No wheels available for this release. Use PyPI installation instead: pip install wildflow"
+}
 ```
 
 ### From GitHub Source (requires Rust)
