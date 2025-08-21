@@ -5,15 +5,25 @@ You can swim with a few GoPros around a reef (e.g. [wildflow.ai/protocol](https:
 This is a bunch of primitives to process the data.
 
 # Usage
-Install with
-```
+
+## Installation
+
+### From PyPI
+```bash
 pip install wildflow
 ```
-So you can play with it from python:
+
+### From GitHub (latest development version)
+```bash
+pip install git+https://github.com/wildflowai/splat.git
+```
+
+## Using the library
 ```py
 from wildflow import splat
 splat.split(...)
 ```
+
 # Workflow
 
 ## SfM workflow
@@ -41,3 +51,4 @@ maturin develop
 ```
 
 After making changes to Rust code, rebuild with `maturin develop`.
+

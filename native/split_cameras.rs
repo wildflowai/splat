@@ -7,73 +7,48 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 
-fn default_neg_inf() -> f64 {
-    f64::NEG_INFINITY
-}
-fn default_pos_inf() -> f64 {
-    f64::INFINITY
-}
 #[derive(Debug, Deserialize, Serialize, Clone)]
-#[pyclass]
-pub struct CameraConfig {
-    #[pyo3(get, set)]
+pub struct SplitCamerasConfig {
     pub input_path: String,
-    #[pyo3(get, set)]
-    #[serde(rename = "minZ", default = "default_neg_inf")]
+    #[serde(rename = "minZ", default)]
     pub min_z: f64,
-    #[pyo3(get, set)]
-    #[serde(rename = "maxZ", default = "default_pos_inf")]
+    #[serde(rename = "maxZ", default)]
     pub max_z: f64,
-    #[pyo3(get, set)]
-    pub patches: Vec<CameraPatch>,
+    pub patches: Vec<CameraPatchConfig>,
 }
 
-#[pymethods]
-impl CameraConfig {
-    #[new]
-    fn new(input_path: String) -> Self {
-        CameraConfig {
-            input_path,
+impl Default for SplitCamerasConfig {
+    fn default() -> Self {
+        Self {
+            input_path: String::new(),
             min_z: f64::NEG_INFINITY,
             max_z: f64::INFINITY,
             patches: Vec::new(),
         }
     }
-
-    fn add_patch(&mut self, patch: CameraPatch) {
-        self.patches.push(patch);
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[pyclass]
-pub struct CameraPatch {
-    #[pyo3(get, set)]
-    #[serde(rename = "minX", default = "default_neg_inf")]
+pub struct CameraPatchConfig {
+    #[serde(rename = "minX", default)]
     pub min_x: f64,
-    #[pyo3(get, set)]
-    #[serde(rename = "minY", default = "default_neg_inf")]
+    #[serde(rename = "minY", default)]
     pub min_y: f64,
-    #[pyo3(get, set)]
-    #[serde(rename = "maxX", default = "default_pos_inf")]
+    #[serde(rename = "maxX", default)]
     pub max_x: f64,
-    #[pyo3(get, set)]
-    #[serde(rename = "maxY", default = "default_pos_inf")]
+    #[serde(rename = "maxY", default)]
     pub max_y: f64,
-    #[pyo3(get, set)]
     pub output_path: String,
 }
 
-#[pymethods]
-impl CameraPatch {
-    #[new]
-    fn new(output_path: String) -> Self {
-        CameraPatch {
+impl Default for CameraPatchConfig {
+    fn default() -> Self {
+        Self {
             min_x: f64::NEG_INFINITY,
             min_y: f64::NEG_INFINITY,
             max_x: f64::INFINITY,
             max_y: f64::INFINITY,
-            output_path,
+            output_path: String::new(),
         }
     }
 }
@@ -148,11 +123,11 @@ pub struct TrackElement {
     pub point2d_idx: u32,
 }
 pub struct ColmapSplitter {
-    config: CameraConfig,
+    config: SplitCamerasConfig,
 }
 
 impl ColmapSplitter {
-    pub fn new(config: CameraConfig) -> Self {
+    pub fn new(config: SplitCamerasConfig) -> Self {
         ColmapSplitter { config }
     }
 
@@ -192,7 +167,6 @@ impl ColmapSplitter {
                     .map(|(id, pt)| (*id, pt.clone()))
                     .collect();
 
-                // Get cameras for kept images
                 let used_camera_ids: std::collections::HashSet<_> =
                     kept_images.values().map(|img| img.camera_id).collect();
                 let filtered_cameras: HashMap<u32, Camera> = cameras
@@ -624,7 +598,6 @@ impl ColmapSplitter {
     }
 }
 
-/// Statistics from splitting operation
 #[derive(Debug)]
 pub struct SplitStats {
     pub cameras_loaded: usize,
@@ -637,7 +610,10 @@ pub struct SplitStats {
 }
 
 #[pyfunction]
-pub fn split_cameras(config: CameraConfig) -> PyResult<HashMap<String, usize>> {
+pub fn split_cameras_json(config_json: &str) -> PyResult<HashMap<String, usize>> {
+    let config: SplitCamerasConfig = serde_json::from_str(config_json)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON parse error: {}", e)))?;
+    
     let stats = ColmapSplitter::new(config).split_cameras().map_err(|e| {
         pyo3::exceptions::PyRuntimeError::new_err(format!("Camera splitting failed: {}", e))
     })?;
@@ -654,11 +630,4 @@ pub fn split_cameras(config: CameraConfig) -> PyResult<HashMap<String, usize>> {
     .iter()
     .map(|(k, v)| (k.to_string(), *v))
     .collect())
-}
-
-#[pyfunction]
-pub fn split_cameras_json(config_json: &str) -> PyResult<HashMap<String, usize>> {
-    let config: CameraConfig = serde_json::from_str(config_json)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("JSON parse error: {}", e)))?;
-    split_cameras(config)
 }

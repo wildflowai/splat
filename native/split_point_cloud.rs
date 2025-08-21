@@ -9,7 +9,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::thread;
 
-// Default value functions for serde
 fn default_sample_percentage() -> f64 {
     100.0
 }
@@ -160,7 +159,6 @@ pub fn read_ply_file(
     let mut vertex_count = 0;
     let mut properties = Vec::new();
 
-    // Parse header
     loop {
         let mut line = String::new();
         header_size += reader.read_line(&mut line)?;
@@ -178,7 +176,6 @@ pub fn read_ply_file(
         }
     }
 
-    // Build property layout
     let mut layout = PropertyLayout {
         x_offset: 0,
         y_offset: 0,
@@ -212,17 +209,14 @@ pub fn read_ply_file(
     }
     layout.row_size = offset;
 
-    // Read vertex data
     file.seek(SeekFrom::Start(header_size as u64))?;
     let mut vertex_data = vec![0u8; layout.row_size * vertex_count];
     file.read_exact(&mut vertex_data)?;
 
-    // Extract points
     let mut points = Vec::new();
     let mut rng = thread_rng();
     let sample_threshold = config.sample_percentage / 100.0;
 
-    // Progress bar for point extraction
     let pb = ProgressBar::new(vertex_count as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -232,7 +226,6 @@ pub fn read_ply_file(
     pb.set_message("Extracting points");
 
     for i in 0..vertex_count {
-        // Check for Python signals (Ctrl+C) every 10k points
         if i % 10000 == 0 {
             Python::with_gil(|py| -> PyResult<()> {
                 py.check_signals()?;
@@ -262,7 +255,6 @@ pub fn read_ply_file(
             row_data[layout.z_offset + 3],
         ]) as f64;
 
-        // Apply Z filtering and sampling
         if z >= config.min_z && z < config.max_z {
             if config.sample_percentage >= 100.0
                 || (config.sample_percentage > 0.0 && rng.gen::<f64>() < sample_threshold)
@@ -284,7 +276,6 @@ pub fn read_ply_file(
             }
         }
 
-        // Update progress every 50k points
         if i % 50000 == 0 {
             pb.set_position(i as u64);
         }
@@ -318,7 +309,6 @@ pub fn assign_points_to_patches(
     let mut assignments: Vec<Vec<usize>> = vec![Vec::new(); patches.len()];
 
     for (point_idx, point) in points.iter().enumerate() {
-        // Check for Python signals (Ctrl+C) every 10k points
         if point_idx % 10000 == 0 {
             Python::with_gil(|py| -> PyResult<()> {
                 py.check_signals()?;
@@ -337,7 +327,6 @@ pub fn assign_points_to_patches(
             }
         }
 
-        // Update progress every 50k points
         if point_idx % 50000 == 0 {
             pb.set_position(point_idx as u64);
         }
@@ -359,20 +348,17 @@ pub fn write_colmap_file(
     let file = File::create(output_path)?;
     let mut writer = BufWriter::new(file);
 
-    // Write point count
     writer.write_all(&(indices.len() as u64).to_le_bytes())?;
-
-    // Write points
     for (i, &point_idx) in indices.iter().enumerate() {
         let point = &points[point_idx];
 
-        writer.write_all(&((i + 1) as u64).to_le_bytes())?; // Point ID
-        writer.write_all(&point.x.to_le_bytes())?; // X
-        writer.write_all(&point.y.to_le_bytes())?; // Y
-        writer.write_all(&point.z.to_le_bytes())?; // Z
-        writer.write_all(&[point.r, point.g, point.b])?; // RGB
-        writer.write_all(&(-1.0_f64).to_le_bytes())?; // Error
-        writer.write_all(&0_u64.to_le_bytes())?; // Track length
+        writer.write_all(&((i + 1) as u64).to_le_bytes())?;
+        writer.write_all(&point.x.to_le_bytes())?;
+        writer.write_all(&point.y.to_le_bytes())?;
+        writer.write_all(&point.z.to_le_bytes())?;
+        writer.write_all(&[point.r, point.g, point.b])?;
+        writer.write_all(&(-1.0_f64).to_le_bytes())?;
+        writer.write_all(&0_u64.to_le_bytes())?
     }
 
     writer.flush()?;
@@ -384,23 +370,19 @@ pub fn split_ply(config: &Config) -> PyResult<PyObject> {
     Python::with_gil(|py| {
         let results = PyDict::new(py);
 
-        // Read PLY file
         let points = read_ply_file(&config.input_file, config).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("PLY read error: {}", e))
         })?;
 
         results.set_item("points_loaded", points.len())?;
 
-        // Assign points to patches
         let assignments = assign_points_to_patches(&points, &config.patches).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Assignment error: {}", e))
         })?;
 
-        // Write output files
         let points_arc = Arc::new(points);
         let assignments_arc = Arc::new(assignments);
 
-        // Progress bar for writing files
         let pb = ProgressBar::new(config.patches.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
@@ -428,7 +410,6 @@ pub fn split_ply(config: &Config) -> PyResult<PyObject> {
                     }
                 }
 
-                // Update progress
                 {
                     let mut count = written_counter.lock().unwrap();
                     *count += 1;
@@ -440,10 +421,8 @@ pub fn split_ply(config: &Config) -> PyResult<PyObject> {
             handles.push((handle, patch_idx));
         }
 
-        // Monitor progress
         let mut last_written = 0;
         loop {
-            // Check for Python signals (Ctrl+C)
             Python::with_gil(|py| -> PyResult<()> {
                 py.check_signals()?;
                 Ok(())
@@ -467,7 +446,6 @@ pub fn split_ply(config: &Config) -> PyResult<PyObject> {
         }
         pb.finish_with_message("Writing complete");
 
-        // Collect results
         let mut total_written = 0;
         for (handle, patch_idx) in handles {
             match handle.join() {

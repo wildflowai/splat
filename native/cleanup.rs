@@ -291,7 +291,7 @@ fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
                     row_data[layout.scale_2_offset + 3],
                 ]) as f64;
 
-                let area = s0.exp().powi(2) + s1.exp().powi(2) + s2.exp().powi(2); // Super splats way of calculating area
+                let area = s0.exp().powi(2) + s1.exp().powi(2) + s2.exp().powi(2);
 
                 let mut keep = true;
 
@@ -317,21 +317,21 @@ fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
                                         if dist_sq <= radius_sq {
                                             neighbors_count += 1;
                                             if neighbors_count >= config_arc.min_neighbors {
-                                                break; // Early termination for this splat
+                                                break;
                                             }
                                         }
                                     }
                                 }
                                 if neighbors_count >= config_arc.min_neighbors {
-                                    break; // Early termination for this splat
+                                    break;
                                 }
                             }
                             if neighbors_count >= config_arc.min_neighbors {
-                                break; // Early termination for this splat
+                                break;
                             }
                         }
                         if neighbors_count >= config_arc.min_neighbors {
-                            break; // Early termination for this splat
+                            break;
                         }
                     }
 

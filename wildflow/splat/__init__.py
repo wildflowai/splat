@@ -5,7 +5,7 @@ Unified dict/JSON API for all spatial processing operations.
 """
 
 from ._core import Config, Patch, split_ply as _split_ply
-from ._core import CameraConfig, CameraPatch, split_cameras as _split_cameras, split_cameras_json as _split_cameras_json
+from ._core import split_cameras_json as _split_cameras_json
 from ._core import BoundingBox, patches as _patches
 from ._core import cleanup_splats as _cleanup_splats
 from typing import Dict, Any, Union, List, Tuple
@@ -13,14 +13,12 @@ import json
 
 __version__ = "0.1.4"
 
-# Clean, simple public API
 __all__ = [
-    "split_point_cloud",  # PLY -> spatial patches
-    "split_cameras",      # COLMAP -> spatial patches  
-    "patches",            # Camera positions -> optimal patches
-    "cleanup_splats",     # 3D Gaussian splats -> filtered splats
-    # Legacy (temporary)
-    "CameraConfig", "CameraPatch"
+    "split_point_cloud",
+    "split_cameras",
+    "patches",
+    "cleanup_splats",
+
 ]
 
 
@@ -48,19 +46,15 @@ def split_point_cloud(config: Union[Config, Dict[str, Any], str]) -> Dict[str, A
         ... })
     """
     if isinstance(config, (str, dict)):
-        # Convert dict/JSON to Config object for now (can be optimized later)
         if isinstance(config, dict):
             config = json.dumps(config)
-        # Parse JSON to dict
         data = json.loads(config) if isinstance(config, str) else config
         
-        # Create Config object
         cfg = Config(data["input_file"])
         if "min_z" in data: cfg.min_z = data["min_z"]
         if "max_z" in data: cfg.max_z = data["max_z"]  
         if "sample_percentage" in data: cfg.sample_percentage = data["sample_percentage"]
         
-        # Add patches
         for patch_data in data.get("patches", []):
             patch = Patch(patch_data["output_file"])
             patch.min_x = patch_data["min_x"]
@@ -71,17 +65,15 @@ def split_point_cloud(config: Union[Config, Dict[str, Any], str]) -> Dict[str, A
             
         return _split_ply(cfg)
     else:
-        # Legacy Config object
         return _split_ply(config)
 
 
-def split_cameras(config: Union[CameraConfig, Dict[str, Any], str]) -> Dict[str, Any]:
+def split_cameras(config: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     """
     Split COLMAP reconstruction into spatial patches by camera positions.
     
     Args:
         config: Camera configuration. Can be:
-                - CameraConfig object (legacy)
                 - Dictionary with config data (recommended)
                 - JSON string with config data
 
@@ -102,7 +94,7 @@ def split_cameras(config: Union[CameraConfig, Dict[str, Any], str]) -> Dict[str,
     elif isinstance(config, dict):
         return _split_cameras_json(json.dumps(config))
     else:
-        return _split_cameras(config)
+        raise TypeError("config must be a dictionary or JSON string")
 
 
 def patches(camera_positions: Union[List[Tuple[float, float]], Dict[str, Any]], 
@@ -122,11 +114,9 @@ def patches(camera_positions: Union[List[Tuple[float, float]], Dict[str, Any]],
         List of patch dictionaries with min_x, max_x, min_y, max_y
         
     Examples:
-        >>> # Simple interface
         >>> camera_positions = [(0, 0), (1, 1), (2, 2)]
         >>> patches_list = patches(camera_positions, max_cameras=500)
         
-        >>> # Dict interface 
         >>> result = patches({
         ...     "camera_positions": [(0, 0), (1, 1), (2, 2)],
         ...     "max_cameras": 500,
@@ -134,23 +124,18 @@ def patches(camera_positions: Union[List[Tuple[float, float]], Dict[str, Any]],
         ... })
     """
     if isinstance(camera_positions, dict):
-        # Dict interface
         data = camera_positions
         positions = data["camera_positions"]
         max_cams = data.get("max_cameras", max_cameras)
         buffer = data.get("buffer_meters", buffer_meters) 
         bins = data.get("target_bins", target_bins)
     else:
-        # Simple interface
         positions = camera_positions
         max_cams = max_cameras
         buffer = buffer_meters
         bins = target_bins
     
-    # Call Rust function
     bbox_objects = _patches(positions, max_cams, buffer, bins)
-    
-    # Convert BoundingBox objects to dicts
     return [
         {
             "min_x": bbox.min_x,

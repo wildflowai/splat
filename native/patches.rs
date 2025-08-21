@@ -104,7 +104,6 @@ impl Binner {
             panic!("Invalid range: [{}, {}]", min_val, max_val);
         }
 
-        // Create nice bin boundaries
         let rough = (max_val - min_val) / target_bins as f64;
         let power = 10.0_f64.powf(rough.log10().floor());
         let nice_numbers = [1.0, 2.0, 5.0, 10.0];
@@ -291,7 +290,7 @@ fn pack_y_direction(
 fn group_cameras_by_y(cameras: &[Point2D]) -> HashMap<i64, Vec<Point2D>> {
     let mut groups = HashMap::new();
     for &camera in cameras {
-        let y_key = (camera.y * 1000.0).round() as i64; // Group by 0.001 precision
+        let y_key = (camera.y * 1000.0).round() as i64;
         groups.entry(y_key).or_insert_with(Vec::new).push(camera);
     }
     groups
@@ -333,7 +332,6 @@ fn handle_clustering_edge_case(
 
     for group in y_groups.values() {
         if group.len() > max_cameras {
-            // Large group - partition by X
             let y_val = group[0].y;
             let min_x = group.iter().map(|c| c.x).fold(f64::INFINITY, f64::min);
             let max_x = group.iter().map(|c| c.x).fold(f64::NEG_INFINITY, f64::max);
@@ -342,7 +340,6 @@ fn handle_clustering_edge_case(
                 partition_1d_horizontal(group, max_cameras, buffer_m, y_val, min_x, max_x);
             special_patches.extend(x_patches);
         } else {
-            // Small group - create single patch
             let min_x = group.iter().map(|c| c.x).fold(f64::INFINITY, f64::min);
             let max_x = group.iter().map(|c| c.x).fold(f64::NEG_INFINITY, f64::max);
             let y_val = group[0].y;
