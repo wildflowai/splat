@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use rayon::prelude::*;
+
 
 fn default_neg_inf() -> f64 { f64::NEG_INFINITY }
 fn default_pos_inf() -> f64 { f64::INFINITY }
@@ -146,11 +148,22 @@ impl ColmapSplitter {
         let original_images = self.read_images_binary()?;
         let original_points3d = self.read_points3d_binary()?;
         
-        let (mut total_patches_written, mut total_cameras_written, mut total_images_written, mut total_points3d_written) = (0, 0, 0, 0);
-        
-        for patch in &self.config.patches {
-            let kept_images = self.filter_images_by_camera_position(&original_images, patch);
-            let kept_points = self.filter_points3d_by_position(&original_points3d, patch);
+        let results: Vec<Result<_, String>> = self.config.patches.par_iter().map(|patch| {
+            let kept_images: HashMap<u32, Image> = original_images.iter()
+                .filter(|(_, img)| {
+                    let (x, y, z) = img.projection_center();
+                    patch.min_x <= x && x <= patch.max_x && patch.min_y <= y && y <= patch.max_y && 
+                    self.config.min_z <= z && z <= self.config.max_z
+                })
+                .map(|(id, img)| (*id, img.clone()))
+                .collect();
+            let kept_points: HashMap<u64, Point3D> = original_points3d.iter()
+                .filter(|(_, pt)| {
+                    patch.min_x <= pt.x && pt.x <= patch.max_x && patch.min_y <= pt.y && pt.y <= patch.max_y && 
+                    self.config.min_z <= pt.z && pt.z <= self.config.max_z
+                })
+                .map(|(id, pt)| (*id, pt.clone()))
+                .collect();
             
             // Get cameras for kept images
             let used_camera_ids: std::collections::HashSet<_> = kept_images.values().map(|img| img.camera_id).collect();
@@ -164,17 +177,19 @@ impl ColmapSplitter {
             let final_images = self.update_images_with_new_point_ids(&processed_images, &point_id_mapping);
             
             let output_dir = Path::new(&patch.output_path).join("sparse").join("0");
-            std::fs::create_dir_all(&output_dir)?;
+            std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
             
-            self.write_cameras_binary(&output_dir, &filtered_cameras)?;
-            self.write_images_binary(&output_dir, &final_images)?;
-            self.write_points3d_binary(&output_dir, &final_points3d)?;
+            self.write_cameras_binary(&output_dir, &filtered_cameras).map_err(|e| e.to_string())?;
+            self.write_images_binary(&output_dir, &final_images).map_err(|e| e.to_string())?;
+            self.write_points3d_binary(&output_dir, &final_points3d).map_err(|e| e.to_string())?;
         
-            total_patches_written += 1;
-            total_cameras_written += filtered_cameras.len();
-            total_images_written += final_images.len();
-            total_points3d_written += final_points3d.len();
-        }
+            Ok((1, filtered_cameras.len(), final_images.len(), final_points3d.len()))
+        }).collect();
+        
+        let patch_results: Result<Vec<_>, String> = results.into_iter().collect();
+        let patch_results = patch_results.map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e)) as Box<dyn std::error::Error>)?;
+        let (total_patches_written, total_cameras_written, total_images_written, total_points3d_written) = 
+            patch_results.iter().fold((0, 0, 0, 0), |(p, c, i, pt), (dp, dc, di, dpt)| (p + dp, c + dc, i + di, pt + dpt));
         
         Ok(SplitStats {
             cameras_loaded: cameras.len(),
@@ -187,49 +202,18 @@ impl ColmapSplitter {
         })
     }
     
-    fn filter_images_by_camera_position(&self, images: &HashMap<u32, Image>, patch: &CameraPatch) -> HashMap<u32, Image> {
-        images.iter()
-            .filter(|(_, img)| {
-                let (x, y, z) = img.projection_center();
-                patch.min_x <= x && x <= patch.max_x && patch.min_y <= y && y <= patch.max_y && 
-                self.config.min_z <= z && z <= self.config.max_z
-            })
-            .map(|(id, img)| (*id, img.clone()))
-            .collect()
-    }
-    
-    fn filter_points3d_by_position(&self, points3d: &HashMap<u64, Point3D>, patch: &CameraPatch) -> HashMap<u64, Point3D> {
-        points3d.iter()
-            .filter(|(_, pt)| {
-                patch.min_x <= pt.x && pt.x <= patch.max_x && patch.min_y <= pt.y && pt.y <= patch.max_y && 
-                self.config.min_z <= pt.z && pt.z <= self.config.max_z
-            })
-            .map(|(id, pt)| (*id, pt.clone()))
-            .collect()
-    }
-    
-
-    
     fn process_images_with_correspondences(&self, kept_images: &HashMap<u32, Image>, kept_points: &HashMap<u64, Point3D>) -> (HashMap<u32, Image>, HashMap<u32, HashMap<u32, u32>>) {
         let mut processed_images = HashMap::new();
         let mut idx_map = HashMap::new();
         
         for (img_id, img) in kept_images {
-            let kept_points2d: Vec<Point2D> = img.points2d.iter()
-                .filter(|pt| kept_points.contains_key(&pt.point3d_id))
-                .cloned()
-                .collect();
-            
-            let original_indices: Vec<u32> = img.points2d.iter()
+            let (kept_points2d, img_idx_map): (Vec<_>, HashMap<_, _>) = img.points2d.iter()
                 .enumerate()
                 .filter(|(_, pt)| kept_points.contains_key(&pt.point3d_id))
-                .map(|(i, _)| i as u32)
-                .collect();
-            
-            let img_idx_map: HashMap<u32, u32> = original_indices.iter()
                 .enumerate()
-                .map(|(new_i, &orig_i)| (orig_i, new_i as u32))
-                .collect();
+                .map(|(new_i, (orig_i, pt))| (pt.clone(), (orig_i as u32, new_i as u32)))
+                .unzip();
+            
             idx_map.insert(*img_id, img_idx_map);
             processed_images.insert(*img_id, Image { points2d: kept_points2d, ..img.clone() });
         }
@@ -243,9 +227,7 @@ impl ColmapSplitter {
         let mut point_id_mapping = HashMap::new();
         
         let mut sorted_point_ids: Vec<_> = kept_points.keys().collect();
-        sorted_point_ids.sort();
-        sorted_point_ids.reverse();
-        
+        sorted_point_ids.sort_by_key(|k| std::cmp::Reverse(*k));
         for &original_pt_id in sorted_point_ids {
             let pt = &kept_points[&original_pt_id];
             let mut new_track: Vec<TrackElement> = pt.track.iter()
@@ -333,13 +315,8 @@ impl ColmapSplitter {
         for _ in 0..num_images {
             let image_id = reader.read_u32::<LittleEndian>()?;
             
-            let qw = reader.read_f64::<LittleEndian>()?;
-            let qx = reader.read_f64::<LittleEndian>()?;
-            let qy = reader.read_f64::<LittleEndian>()?;
-            let qz = reader.read_f64::<LittleEndian>()?;
-            let tx = reader.read_f64::<LittleEndian>()?;
-            let ty = reader.read_f64::<LittleEndian>()?;
-            let tz = reader.read_f64::<LittleEndian>()?;
+            let (qw, qx, qy, qz) = (reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?);
+            let (tx, ty, tz) = (reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?);
             
             let camera_id = reader.read_u32::<LittleEndian>()?;
             
@@ -355,11 +332,11 @@ impl ColmapSplitter {
             let mut points2d = Vec::with_capacity(num_points2d as usize);
             
             for _ in 0..num_points2d {
-                let x = reader.read_f64::<LittleEndian>()?;
-                let y = reader.read_f64::<LittleEndian>()?;
-                let point3d_id = reader.read_u64::<LittleEndian>()?;
-                
-                points2d.push(Point2D { x, y, point3d_id });
+                points2d.push(Point2D {
+                    x: reader.read_f64::<LittleEndian>()?,
+                    y: reader.read_f64::<LittleEndian>()?,
+                    point3d_id: reader.read_u64::<LittleEndian>()?,
+                });
             }
             
             images.insert(image_id, Image {
@@ -381,29 +358,24 @@ impl ColmapSplitter {
         let mut reader = BufReader::new(file);
         
         let num_points3d = reader.read_u64::<LittleEndian>()?;
-        let mut points3d = HashMap::new();
+        let mut points3d = HashMap::with_capacity(num_points3d as usize);
         
         for _ in 0..num_points3d {
             let point3d_id = reader.read_u64::<LittleEndian>()?;
-            
             let (x, y, z) = (reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?, reader.read_f64::<LittleEndian>()?);
             let (r, g, b) = (reader.read_u8()?, reader.read_u8()?, reader.read_u8()?);
             let error = reader.read_f64::<LittleEndian>()?;
             let track_length = reader.read_u64::<LittleEndian>()?;
-            let track = (0..track_length).map(|_| -> Result<TrackElement, Box<dyn std::error::Error>> {
-                Ok(TrackElement {
+            
+            let mut track = Vec::with_capacity(track_length as usize);
+            for _ in 0..track_length {
+                track.push(TrackElement {
                     image_id: reader.read_u32::<LittleEndian>()?,
                     point2d_idx: reader.read_u32::<LittleEndian>()?,
-                })
-            }).collect::<Result<Vec<_>, _>>()?;
+                });
+            }
             
-            points3d.insert(point3d_id, Point3D {
-                point3d_id,
-                x, y, z,
-                r, g, b,
-                error,
-                track,
-            });
+            points3d.insert(point3d_id, Point3D { point3d_id, x, y, z, r, g, b, error, track });
         }
         
         Ok(points3d)
@@ -415,9 +387,9 @@ impl ColmapSplitter {
         let mut writer = BufWriter::new(file);
         
         writer.write_u64::<LittleEndian>(cameras.len() as u64)?;
-        let mut sorted_cameras: Vec<_> = cameras.iter().collect();
-        sorted_cameras.sort_by_key(|(id, _)| *id);
-        for (_, camera) in sorted_cameras {
+        let mut sorted: Vec<_> = cameras.iter().collect();
+        sorted.sort_by_key(|(id, _)| *id);
+        for (_, camera) in sorted {
             writer.write_u32::<LittleEndian>(camera.camera_id)?;
             writer.write_u32::<LittleEndian>(camera.model_id)?;
             writer.write_u64::<LittleEndian>(camera.width)?;
@@ -437,17 +409,13 @@ impl ColmapSplitter {
         let mut writer = BufWriter::new(file);
         
         writer.write_u64::<LittleEndian>(images.len() as u64)?;
-        let mut sorted_images: Vec<_> = images.iter().collect();
-        sorted_images.sort_by_key(|(id, _)| *id);
-        for (_, image) in sorted_images {
+        let mut sorted: Vec<_> = images.iter().collect();
+        sorted.sort_by_key(|(id, _)| *id);
+        for (_, image) in sorted {
             writer.write_u32::<LittleEndian>(image.image_id)?;
-            writer.write_f64::<LittleEndian>(image.qw)?;
-            writer.write_f64::<LittleEndian>(image.qx)?;
-            writer.write_f64::<LittleEndian>(image.qy)?;
-            writer.write_f64::<LittleEndian>(image.qz)?;
-            writer.write_f64::<LittleEndian>(image.tx)?;
-            writer.write_f64::<LittleEndian>(image.ty)?;
-            writer.write_f64::<LittleEndian>(image.tz)?;
+            for &val in &[image.qw, image.qx, image.qy, image.qz, image.tx, image.ty, image.tz] {
+                writer.write_f64::<LittleEndian>(val)?;
+            }
             writer.write_u32::<LittleEndian>(image.camera_id)?;
             
             writer.write_all(image.name.as_bytes())?;
@@ -471,16 +439,12 @@ impl ColmapSplitter {
         let mut writer = BufWriter::new(file);
         
         writer.write_u64::<LittleEndian>(points3d.len() as u64)?;
-        let mut sorted_points3d: Vec<_> = points3d.iter().collect();
-        sorted_points3d.sort_by_key(|(id, _)| *id);
-        for (_, pt) in sorted_points3d {
+        let mut sorted: Vec<_> = points3d.iter().collect();
+        sorted.sort_by_key(|(id, _)| *id);
+        for (_, pt) in sorted {
             writer.write_u64::<LittleEndian>(pt.point3d_id)?;
-            writer.write_f64::<LittleEndian>(pt.x)?;
-            writer.write_f64::<LittleEndian>(pt.y)?;
-            writer.write_f64::<LittleEndian>(pt.z)?;
-            writer.write_u8(pt.r)?;
-            writer.write_u8(pt.g)?;
-            writer.write_u8(pt.b)?;
+            for &val in &[pt.x, pt.y, pt.z] { writer.write_f64::<LittleEndian>(val)?; }
+            for &val in &[pt.r, pt.g, pt.b] { writer.write_u8(val)?; }
             writer.write_f64::<LittleEndian>(pt.error)?;
             
             writer.write_u64::<LittleEndian>(pt.track.len() as u64)?;
