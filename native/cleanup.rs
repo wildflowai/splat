@@ -1,16 +1,20 @@
-use std::fs::File;
-use std::io::{BufReader, Read, Write, Seek, SeekFrom, BufWriter};
-use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::io::BufRead;
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::time::Instant;
+use pyo3::prelude::*;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufRead;
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
+use std::time::Instant;
 
-fn default_min_neighbors() -> usize { 10 }
-fn default_radius() -> f64 { 0.1 }
+fn default_min_neighbors() -> usize {
+    10
+}
+fn default_radius() -> f64 {
+    0.1
+}
 
 /// Configuration for cleaning a PLY point cloud.
 ///
@@ -43,8 +47,6 @@ struct CleanConfig {
     pub radius: f64,
 }
 
-
-
 #[derive(Debug, Clone, Copy)]
 struct PropertyLayout {
     x_offset: usize,
@@ -71,7 +73,10 @@ fn point_to_grid_cell(point: &[f64; 3], cell_size: f64) -> GridCell {
     }
 }
 
-fn read_colmap_points3d_binary_to_grid(path: &str, cell_size: f64) -> Result<HashMap<GridCell, Vec<[f64; 3]>>, Box<dyn std::error::Error>> {
+fn read_colmap_points3d_binary_to_grid(
+    path: &str,
+    cell_size: f64,
+) -> Result<HashMap<GridCell, Vec<[f64; 3]>>, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let num_points = reader.read_u64::<LittleEndian>()?;
@@ -98,7 +103,9 @@ fn read_colmap_points3d_binary_to_grid(path: &str, cell_size: f64) -> Result<Has
     Ok(grid)
 }
 
-fn read_ply_header(reader: &mut BufReader<&mut File>) -> Result<(usize, usize, String, PropertyLayout), Box<dyn std::error::Error>> {
+fn read_ply_header(
+    reader: &mut BufReader<&mut File>,
+) -> Result<(usize, usize, String, PropertyLayout), Box<dyn std::error::Error>> {
     let mut header = String::new();
     let mut header_size = 0;
     let mut vertex_count = 0;
@@ -117,7 +124,11 @@ fn read_ply_header(reader: &mut BufReader<&mut File>) -> Result<(usize, usize, S
         if line_trimmed == "end_header" {
             break;
         } else if line_trimmed.starts_with("element vertex") {
-            vertex_count = line_trimmed.split_whitespace().nth(2).unwrap_or("0").parse()?;
+            vertex_count = line_trimmed
+                .split_whitespace()
+                .nth(2)
+                .unwrap_or("0")
+                .parse()?;
         } else if line_trimmed.starts_with("property") {
             let parts: Vec<&str> = line_trimmed.split_whitespace().collect();
             if parts.len() >= 3 {
@@ -140,7 +151,7 @@ fn read_ply_header(reader: &mut BufReader<&mut File>) -> Result<(usize, usize, S
     for (prop_type, prop_name) in &properties {
         let size = match prop_type.as_str() {
             "float" | "f32" => 4,
-            "double" | "f64"=> 8,
+            "double" | "f64" => 8,
             "uchar" | "u8" => 1,
             "int" | "i32" => 4,
             _ => 4,
@@ -183,34 +194,51 @@ fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
     println!("Starting PLY cleanup process...");
 
     if config.radius == 0.0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Radius cannot be 0.0. Please provide a positive radius value."));
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Radius cannot be 0.0. Please provide a positive radius value.",
+        ));
     }
 
     let colmap_grid = if let Some(colmap_points_file) = &config.colmap_points_file {
-        println!("Reading COLMAP points from {} and building grid...", colmap_points_file);
+        println!(
+            "Reading COLMAP points from {} and building grid...",
+            colmap_points_file
+        );
         let colmap_read_start = Instant::now();
-        let grid = read_colmap_points3d_binary_to_grid(colmap_points_file, config.radius).map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-        println!("Finished reading COLMAP points and building grid in {:?}", colmap_read_start.elapsed());
+        let grid = read_colmap_points3d_binary_to_grid(colmap_points_file, config.radius)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+        println!(
+            "Finished reading COLMAP points and building grid in {:?}",
+            colmap_read_start.elapsed()
+        );
         Some(Arc::new(grid))
     } else {
         None
     };
 
-    let mut file = File::open(&config.input_file).map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    let mut file = File::open(&config.input_file)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
     let mut reader = BufReader::new(&mut file);
 
     println!("Reading PLY header from {}...", config.input_file);
     let header_read_start = Instant::now();
     let (vertex_count, header_size, header, layout) = read_ply_header(&mut reader)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    println!("Finished reading PLY header in {:?}. Found {} vertices.", header_read_start.elapsed(), vertex_count);
+    println!(
+        "Finished reading PLY header in {:?}. Found {} vertices.",
+        header_read_start.elapsed(),
+        vertex_count
+    );
 
     println!("Reading PLY vertex data...");
     let vertex_data_read_start = Instant::now();
     file.seek(SeekFrom::Start(header_size as u64)).unwrap();
     let mut vertex_data = vec![0u8; layout.row_size * vertex_count];
     file.read_exact(&mut vertex_data).unwrap();
-    println!("Finished reading PLY vertex data in {:?}", vertex_data_read_start.elapsed());
+    println!(
+        "Finished reading PLY vertex data in {:?}",
+        vertex_data_read_start.elapsed()
+    );
 
     println!("Starting splat filtering (parallelized)...");
     let filtering_start = Instant::now();
@@ -218,101 +246,132 @@ fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
     let config_arc = Arc::new(config.clone());
     let vertex_data_arc = Arc::new(vertex_data);
 
-    let results: Vec<bool> = (0..vertex_count).into_par_iter().map(|i| {
-        let row_start = i * layout.row_size;
-        let row_data = &vertex_data_arc[row_start..row_start + layout.row_size];
+    let results: Vec<bool> =
+        (0..vertex_count)
+            .into_par_iter()
+            .map(|i| {
+                let row_start = i * layout.row_size;
+                let row_data = &vertex_data_arc[row_start..row_start + layout.row_size];
 
-        let x = f32::from_le_bytes([
-            row_data[layout.x_offset], row_data[layout.x_offset + 1],
-            row_data[layout.x_offset + 2], row_data[layout.x_offset + 3],
-        ]) as f64;
-        let y = f32::from_le_bytes([
-            row_data[layout.y_offset], row_data[layout.y_offset + 1],
-            row_data[layout.y_offset + 2], row_data[layout.y_offset + 3],
-        ]) as f64;
-        let z = f32::from_le_bytes([
-            row_data[layout.z_offset], row_data[layout.z_offset + 1],
-            row_data[layout.z_offset + 2], row_data[layout.z_offset + 3],
-        ]) as f64;
+                let x = f32::from_le_bytes([
+                    row_data[layout.x_offset],
+                    row_data[layout.x_offset + 1],
+                    row_data[layout.x_offset + 2],
+                    row_data[layout.x_offset + 3],
+                ]) as f64;
+                let y = f32::from_le_bytes([
+                    row_data[layout.y_offset],
+                    row_data[layout.y_offset + 1],
+                    row_data[layout.y_offset + 2],
+                    row_data[layout.y_offset + 3],
+                ]) as f64;
+                let z = f32::from_le_bytes([
+                    row_data[layout.z_offset],
+                    row_data[layout.z_offset + 1],
+                    row_data[layout.z_offset + 2],
+                    row_data[layout.z_offset + 3],
+                ]) as f64;
 
-        let s0 = f32::from_le_bytes([
-            row_data[layout.scale_0_offset], row_data[layout.scale_0_offset + 1],
-            row_data[layout.scale_0_offset + 2], row_data[layout.scale_0_offset + 3],
-        ]) as f64;
-        let s1 = f32::from_le_bytes([
-            row_data[layout.scale_1_offset], row_data[layout.scale_1_offset + 1],
-            row_data[layout.scale_1_offset + 2], row_data[layout.scale_1_offset + 3],
-        ]) as f64;
-        let s2 = f32::from_le_bytes([
-            row_data[layout.scale_2_offset], row_data[layout.scale_2_offset + 1],
-            row_data[layout.scale_2_offset + 2], row_data[layout.scale_2_offset + 3],
-        ]) as f64;
+                let s0 = f32::from_le_bytes([
+                    row_data[layout.scale_0_offset],
+                    row_data[layout.scale_0_offset + 1],
+                    row_data[layout.scale_0_offset + 2],
+                    row_data[layout.scale_0_offset + 3],
+                ]) as f64;
+                let s1 = f32::from_le_bytes([
+                    row_data[layout.scale_1_offset],
+                    row_data[layout.scale_1_offset + 1],
+                    row_data[layout.scale_1_offset + 2],
+                    row_data[layout.scale_1_offset + 3],
+                ]) as f64;
+                let s2 = f32::from_le_bytes([
+                    row_data[layout.scale_2_offset],
+                    row_data[layout.scale_2_offset + 1],
+                    row_data[layout.scale_2_offset + 2],
+                    row_data[layout.scale_2_offset + 3],
+                ]) as f64;
 
-        let area = s0.exp().powi(2) + s1.exp().powi(2) + s2.exp().powi(2); // Super splats way of calculating area
+                let area = s0.exp().powi(2) + s1.exp().powi(2) + s2.exp().powi(2); // Super splats way of calculating area
 
-        let mut keep = true;
+                let mut keep = true;
 
-        if let Some(grid) = &colmap_grid {
-            let splat_point = [x, y, z];
-            let splat_cell = point_to_grid_cell(&splat_point, config_arc.radius);
-            let mut neighbors_count = 0;
-            let radius_sq = config_arc.radius.powi(2);
+                if let Some(grid) = &colmap_grid {
+                    let splat_point = [x, y, z];
+                    let splat_cell = point_to_grid_cell(&splat_point, config_arc.radius);
+                    let mut neighbors_count = 0;
+                    let radius_sq = config_arc.radius.powi(2);
 
-            for dx in -1..=1 {
-                for dy in -1..=1 {
-                    for dz in -1..=1 {
-                        let neighbor_cell = GridCell {
-                            x: splat_cell.x + dx,
-                            y: splat_cell.y + dy,
-                            z: splat_cell.z + dz,
-                        };
-                        if let Some(points_in_cell) = grid.get(&neighbor_cell) {
-                            for colmap_point in points_in_cell {
-                                let dist_sq = (colmap_point[0] - splat_point[0]).powi(2) +
-                                    (colmap_point[1] - splat_point[1]).powi(2) +
-                                    (colmap_point[2] - splat_point[2]).powi(2);
-                                if dist_sq <= radius_sq {
-                                    neighbors_count += 1;
-                                    if neighbors_count >= config_arc.min_neighbors {
-                                        break; // Early termination for this splat
+                    for dx in -1..=1 {
+                        for dy in -1..=1 {
+                            for dz in -1..=1 {
+                                let neighbor_cell = GridCell {
+                                    x: splat_cell.x + dx,
+                                    y: splat_cell.y + dy,
+                                    z: splat_cell.z + dz,
+                                };
+                                if let Some(points_in_cell) = grid.get(&neighbor_cell) {
+                                    for colmap_point in points_in_cell {
+                                        let dist_sq = (colmap_point[0] - splat_point[0]).powi(2)
+                                            + (colmap_point[1] - splat_point[1]).powi(2)
+                                            + (colmap_point[2] - splat_point[2]).powi(2);
+                                        if dist_sq <= radius_sq {
+                                            neighbors_count += 1;
+                                            if neighbors_count >= config_arc.min_neighbors {
+                                                break; // Early termination for this splat
+                                            }
+                                        }
                                     }
                                 }
+                                if neighbors_count >= config_arc.min_neighbors {
+                                    break; // Early termination for this splat
+                                }
+                            }
+                            if neighbors_count >= config_arc.min_neighbors {
+                                break; // Early termination for this splat
                             }
                         }
                         if neighbors_count >= config_arc.min_neighbors {
                             break; // Early termination for this splat
                         }
                     }
-                    if neighbors_count >= config_arc.min_neighbors {
-                        break; // Early termination for this splat
+
+                    if neighbors_count < config_arc.min_neighbors {
+                        keep = false;
                     }
                 }
-                if neighbors_count >= config_arc.min_neighbors {
-                    break; // Early termination for this splat
+
+                if let (
+                    Some(min_x),
+                    Some(min_y),
+                    Some(min_z),
+                    Some(max_x),
+                    Some(max_y),
+                    Some(max_z),
+                ) = (
+                    config_arc.min_x,
+                    config_arc.min_y,
+                    config_arc.min_z,
+                    config_arc.max_x,
+                    config_arc.max_y,
+                    config_arc.max_z,
+                ) {
+                    if !(x >= min_x
+                        && x < max_x
+                        && y >= min_y
+                        && y < max_y
+                        && z >= min_z
+                        && z < max_z)
+                    {
+                        keep = false;
+                    }
                 }
-            }
 
-            if neighbors_count < config_arc.min_neighbors {
-                keep = false;
-            }
-        }
-
-        if let (Some(min_x), Some(min_y), Some(min_z), Some(max_x), Some(max_y), Some(max_z)) = (
-            config_arc.min_x, config_arc.min_y, config_arc.min_z,
-            config_arc.max_x, config_arc.max_y, config_arc.max_z
-        ) {
-            if !(x >= min_x && x < max_x &&
-                 y >= min_y && y < max_y &&
-                 z >= min_z && z < max_z) {
-                keep = false;
-            }
-        }
-
-        if area >= config_arc.max_area {
-            keep = false;
-        }
-        keep
-    }).collect();
+                if area >= config_arc.max_area {
+                    keep = false;
+                }
+                keep
+            })
+            .collect();
 
     let mut final_kept_vertices = Vec::new();
     let mut final_discarded_vertices = Vec::new();
@@ -327,27 +386,55 @@ fn cleanup_ply(config: &CleanConfig) -> PyResult<()> {
         }
     }
 
-    println!("Finished splat filtering in {:?}", filtering_start.elapsed());
+    println!(
+        "Finished splat filtering in {:?}",
+        filtering_start.elapsed()
+    );
 
     println!("Writing kept splats to {}...", config.output_file);
     let write_kept_start = Instant::now();
-    let output_file = File::create(&config.output_file).map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    let mut writer = BufWriter::new(output_file);
-    write_ply_data(&mut writer, &header, vertex_count, final_kept_vertices.len() / layout.row_size, &final_kept_vertices)
+    let output_file = File::create(&config.output_file)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    println!("Finished writing kept splats in {:?}. Kept {} splats.", write_kept_start.elapsed(), final_kept_vertices.len() / layout.row_size);
+    let mut writer = BufWriter::new(output_file);
+    write_ply_data(
+        &mut writer,
+        &header,
+        vertex_count,
+        final_kept_vertices.len() / layout.row_size,
+        &final_kept_vertices,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+    println!(
+        "Finished writing kept splats in {:?}. Kept {} splats.",
+        write_kept_start.elapsed(),
+        final_kept_vertices.len() / layout.row_size
+    );
 
     if let Some(discarded_file_path) = &config.discarded_file {
         println!("Writing discarded splats to {}...", discarded_file_path);
         let write_discarded_start = Instant::now();
-        let discarded_file = File::create(discarded_file_path).map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-        let mut discarded_writer = BufWriter::new(discarded_file);
-        write_ply_data(&mut discarded_writer, &header, vertex_count, final_discarded_vertices.len() / layout.row_size, &final_discarded_vertices)
+        let discarded_file = File::create(discarded_file_path)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-        println!("Finished writing discarded splats in {:?}. Discarded {} splats.", write_discarded_start.elapsed(), final_discarded_vertices.len() / layout.row_size);
+        let mut discarded_writer = BufWriter::new(discarded_file);
+        write_ply_data(
+            &mut discarded_writer,
+            &header,
+            vertex_count,
+            final_discarded_vertices.len() / layout.row_size,
+            &final_discarded_vertices,
+        )
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+        println!(
+            "Finished writing discarded splats in {:?}. Discarded {} splats.",
+            write_discarded_start.elapsed(),
+            final_discarded_vertices.len() / layout.row_size
+        );
     }
 
-    println!("PLY cleanup process completed in {:?}", start_time.elapsed());
+    println!(
+        "PLY cleanup process completed in {:?}",
+        start_time.elapsed()
+    );
     Ok(())
 }
 
