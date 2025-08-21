@@ -5,10 +5,11 @@ Fast spatial partitioning with multi-threaded processing and COLMAP-compatible o
 """
 
 from ._core import Config, Patch, split_ply as _split_ply
-from ._core import CameraConfig, CameraPatch, split_cameras as _split_cameras
-from typing import Dict, Any
+from ._core import CameraConfig, CameraPatch, split_cameras as _split_cameras, split_cameras_json as _split_cameras_json
+from typing import Dict, Any, Union
+import json
 
-__all__ = ["split_point_cloud", "split_cameras"]
+__all__ = ["split_point_cloud", "split_cameras", "split_cameras_from_patches"]
 
 
 def split_point_cloud(config: Config) -> Dict[str, Any]:
@@ -37,7 +38,7 @@ def split_point_cloud(config: Config) -> Dict[str, Any]:
     return _split_ply(config)
 
 
-def split_cameras(config: CameraConfig) -> Dict[str, Any]:
+def split_cameras(config: Union[CameraConfig, Dict[str, Any], str]) -> Dict[str, Any]:
     """
     Split COLMAP reconstruction into spatial patches by camera positions.
 
@@ -45,7 +46,11 @@ def split_cameras(config: CameraConfig) -> Dict[str, Any]:
     Produces cropped COLMAP reconstructions for patch-based processing.
 
     Args:
-        config: Configuration with input COLMAP path and spatial patch definitions
+        config: Configuration with input COLMAP path and spatial patch definitions.
+               Can be:
+               - CameraConfig object (legacy)
+               - Dictionary with config data (recommended)
+               - JSON string with config data
 
     Returns:
         Dictionary with processing results:
@@ -57,12 +62,63 @@ def split_cameras(config: CameraConfig) -> Dict[str, Any]:
         - 'total_images_written': Images written across all patches
         - 'total_points3d_written': 3D points written across all patches
 
-    Example:
+    Examples:
+        >>> # Dict interface (recommended)
+        >>> result = split_cameras({
+        ...     "input_path": "/path/to/colmap/sparse/0", 
+        ...     "min_z": -2.0, "max_z": 10.0,
+        ...     "patches": [
+        ...         {"output_path": "/output/p0", "min_x": -1, "min_y": -1, "max_x": 1, "max_y": 1}
+        ...     ]
+        ... })
+        
+        >>> # JSON interface 
+        >>> import json
+        >>> config_dict = {...}  # same as above
+        >>> result = split_cameras(json.dumps(config_dict))
+        
+        >>> # Legacy object interface
         >>> config = CameraConfig("/path/to/colmap/sparse/0")
-        >>> patch = CameraPatch("/output/patch1")
-        >>> patch.set_bounds(-1.0, -1.0, 1.0, 1.0)  # min_x, min_y, max_x, max_y
+        >>> patch = CameraPatch("/output/patch1") 
+        >>> patch.set_bounds(-1.0, -1.0, 1.0, 1.0)
         >>> config.add_patch(patch)
-        >>> results = split_cameras(config)
-        >>> print(f"Created {results['patches_written']} patches")
+        >>> result = split_cameras(config)
     """
-    return _split_cameras(config)
+    # Handle different input types
+    if isinstance(config, str):
+        # JSON string
+        return _split_cameras_json(config)
+    elif isinstance(config, dict):
+        # Dict - convert to JSON
+        return _split_cameras_json(json.dumps(config))
+    else:
+        # Legacy CameraConfig object
+        return _split_cameras(config)
+
+
+def split_cameras_from_patches(input_path: str, patches: list, min_z: float = float('-inf'), max_z: float = float('inf')) -> Dict[str, Any]:
+    """
+    Simplified interface for your specific workflow.
+    
+    Args:
+        input_path: Path to COLMAP sparse reconstruction  
+        patches: List of patch dictionaries with output_path and bounds
+        min_z, max_z: Z bounds for filtering
+    
+    Returns:
+        Dictionary with processing results
+        
+    Example:
+        >>> patches = [
+        ...     {"output_path": "/output/p0", "min_x": -1, "min_y": -1, "max_x": 1, "max_y": 1},
+        ...     {"output_path": "/output/p1", "min_x": 0, "min_y": 0, "max_x": 2, "max_y": 2}
+        ... ]
+        >>> result = split_cameras_from_patches("/path/to/colmap", patches, -2.0, 10.0)
+    """
+    config = {
+        "input_path": input_path,
+        "min_z": min_z,
+        "max_z": max_z, 
+        "patches": patches
+    }
+    return split_cameras(config)

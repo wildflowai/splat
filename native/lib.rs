@@ -25,6 +25,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<split_cameras::CameraConfig>()?;
     m.add_class::<split_cameras::CameraPatch>()?;
     m.add_function(wrap_pyfunction!(split_cameras::split_cameras, m)?)?;
+    m.add_function(wrap_pyfunction!(split_cameras::split_cameras_json, m)?)?;
     
     Ok(())
 }
