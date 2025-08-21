@@ -12,6 +12,10 @@ from .patches import patches, BoundingBox
 from ._core import Config, Patch
 from .split import split_point_cloud
 
+# COLMAP camera splitting functionality
+from ._core import CameraConfig, CameraPatch
+from .split import split_cameras
+
 __version__ = "0.1.4"
 
 # Public API
@@ -21,4 +25,7 @@ __all__ = [
     "Config",
     "Patch", 
     "split_point_cloud",
+    "CameraConfig",
+    "CameraPatch",
+    "split_cameras",
 ]
