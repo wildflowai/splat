@@ -37,7 +37,7 @@ flowchart TD
     style H fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style I fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
 
-    F[Plan GPU Split]
+    F[plan GPU split]
     D[split cameras]
     E[split point cloud]
     G([train each patch on GPU])
