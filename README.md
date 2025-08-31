@@ -16,21 +16,76 @@ pip install git+https://github.com/wildflowai/splat.git
 
 **Note**: Installing from GitHub requires Rust to be installed on your system.
 
+## Flow
+
+```mermaid
+flowchart TD
+    %% Inputs
+    style A fill:#1E90FF,stroke:#000,stroke-width:1px,color:#fff
+    style B fill:#1E90FF,stroke:#000,stroke-width:1px,color:#fff
+    style C fill:#1E90FF,stroke:#000,stroke-width:1px,color:#fff
+
+    A([corrected images]) 
+    B([colmap cameras])
+    C([colmap point cloud])
+
+    %% Transformations
+    style D fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+    style E fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+    style F fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+    style G fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+    style H fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+    style I fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
+
+    D[split cameras]
+    E[split point cloud]
+    F[Plan GPU Split]
+    G[train each patch]
+    H[cleanup patches]
+    I[merge patches]
+
+    %% Outputs
+    style J1 fill:#006400,stroke:#000,stroke-width:1px,color:#fff
+    style J2 fill:#006400,stroke:#000,stroke-width:1px,color:#fff
+    style J3 fill:#006400,stroke:#000,stroke-width:1px,color:#fff
+
+    J1([massive splat model])
+    J2([splat ortho])
+    J3([artifacts to publish])
+
+    %% Flow connections
+    A --> D
+    B --> D
+    C --> E
+    D --> F
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> J1
+    I --> J2
+    I --> J3
+
+```
+
 ## Using the library
 ```py
 from wildflow import splat
 
-// split into multiple training patches so each patch fits into GPU VRAM.
+# split into multiple training patches so each patch fits into GPU VRAM
 gpu_patches = splat.patches(cameras_2d, max_cameras=1400, buffer_meters=2)
 
+# split colmap images.bin and cameras.bin into patches to train on GPU
 splat.split_cameras({
     "input_path": input_path,
+    "save_points3d": False, # we don't want tie points to see splats
     "patches": [
         {**patch, "output_path": f"{output_path}/p{i}/sparse/0"}
         for i, patch in enumerate(gpu_patches)
     ]
 })
 
+# use 5% of the dense point cloud to seed splat initial positions
 splat.split_point_cloud({
     "input_file": input_path,
     "sample_percentage": 5,
@@ -40,13 +95,16 @@ splat.split_point_cloud({
     ]
 })
 
-// train all patches on GPUs
+# train all patches on GPU
 
+# get rid of wacky splats
 splat.cleanup_splats(...)
 
+# merge everything into one ply file
 splat.merge_ply_files(...)
 
-// create ortho
-// publish
+# create orthomosaic
+
+# publish
 
 ```
