@@ -30,17 +30,17 @@ flowchart TD
     C([colmap point cloud])
 
     %% Transformations
+    style F fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style D fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style E fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
-    style F fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style G fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style H fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
     style I fill:#6C757D,stroke:#000,stroke-width:1px,color:#fff
 
+    F[Plan GPU Split]
     D[split cameras]
     E[split point cloud]
-    F[Plan GPU Split]
-    G[train each patch]
+    G([train each patch on GPU])
     H[cleanup patches]
     I[merge patches]
 
@@ -54,18 +54,18 @@ flowchart TD
     J3([artifacts to publish])
 
     %% Flow connections
-    A --> D
-    B --> D
-    C --> E
-    D --> F
-    E --> F
-    F --> G
+    B --> F
+    F --> D
+    F --> E
+    D --> G
+    E --> G
+    A --> G
     G --> H
     H --> I
     I --> J1
     I --> J2
     I --> J3
-
+    C --> E
 ```
 
 ## Using the library
