@@ -10,10 +10,9 @@ use std::path::Path;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SplitCamerasConfig {
     pub input_path: String,
-    #[serde(rename = "minZ", default)]
     pub min_z: f64,
-    #[serde(rename = "maxZ", default)]
     pub max_z: f64,
+    pub save_points3d: bool,
     pub patches: Vec<CameraPatchConfig>,
 }
 
@@ -23,6 +22,7 @@ impl Default for SplitCamerasConfig {
             input_path: String::new(),
             min_z: f64::NEG_INFINITY,
             max_z: f64::INFINITY,
+            save_points3d: false,
             patches: Vec::new(),
         }
     }
@@ -30,13 +30,9 @@ impl Default for SplitCamerasConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CameraPatchConfig {
-    #[serde(rename = "minX", default)]
     pub min_x: f64,
-    #[serde(rename = "minY", default)]
     pub min_y: f64,
-    #[serde(rename = "maxX", default)]
     pub max_x: f64,
-    #[serde(rename = "maxY", default)]
     pub max_y: f64,
     pub output_path: String,
 }
@@ -182,15 +178,19 @@ impl ColmapSplitter {
                 let final_images =
                     self.update_images_with_new_point_ids(&processed_images, &point_id_mapping);
 
-                let output_dir = Path::new(&patch.output_path).join("sparse").join("0");
+                let output_dir = Path::new(&patch.output_path);
                 std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
+                // Write files directly to the output directory without creating sparse/0 subdirectory
                 self.write_cameras_binary(&output_dir, &filtered_cameras)
                     .map_err(|e| e.to_string())?;
                 self.write_images_binary(&output_dir, &final_images)
                     .map_err(|e| e.to_string())?;
-                self.write_points3d_binary(&output_dir, &final_points3d)
-                    .map_err(|e| e.to_string())?;
+                
+                if self.config.save_points3d {
+                    self.write_points3d_binary(&output_dir, &final_points3d)
+                        .map_err(|e| e.to_string())?;
+                }
 
                 Ok((
                     1,
@@ -507,6 +507,7 @@ impl ColmapSplitter {
         output_dir: &Path,
         cameras: &HashMap<u32, Camera>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(output_dir)?;
         let camera_path = output_dir.join("cameras.bin");
         let file = File::create(camera_path)?;
         let mut writer = BufWriter::new(file);
@@ -533,6 +534,7 @@ impl ColmapSplitter {
         output_dir: &Path,
         images: &HashMap<u32, Image>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(output_dir)?;
         let images_path = output_dir.join("images.bin");
         let file = File::create(images_path)?;
         let mut writer = BufWriter::new(file);
@@ -569,6 +571,7 @@ impl ColmapSplitter {
         output_dir: &Path,
         points3d: &HashMap<u64, Point3D>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(output_dir)?;
         let points3d_path = output_dir.join("points3D.bin");
         let file = File::create(points3d_path)?;
         let mut writer = BufWriter::new(file);

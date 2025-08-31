@@ -1,7 +1,6 @@
-Super hacky library to work with coral reef splats.
+Extremely unstable library to work with coral reef splats.
 
 You can swim with a few GoPros around a reef (e.g. [wildflow.ai/protocol](https://wildflow.ai/protocol)) and then turn the footage into 3D models (e.g. [wildflow.ai/demo](https://wildflow.ai/demo)) to track changes over time, run different analysis on top of it, and ultimately see which conservation/restoration methods work best.
-
 
 # Installation
 
@@ -20,27 +19,34 @@ pip install git+https://github.com/wildflowai/splat.git
 ## Using the library
 ```py
 from wildflow import splat
-splat.split(...)
+
+// split into multiple training patches so each patch fits into GPU VRAM.
+gpu_patches = splat.patches(cameras_2d, max_cameras=1400, buffer_meters=2)
+
+splat.split_cameras({
+    "input_path": input_path,
+    "patches": [
+        {**patch, "output_path": f"{output_path}/p{i}/sparse/0"}
+        for i, patch in enumerate(gpu_patches)
+    ]
+})
+
+splat.split_point_cloud({
+    "input_file": input_path,
+    "sample_percentage": 5,
+    "patches": [
+        {**coords(patch), "output_file": f"{output_path}/p{i}/sparse/0/points3D.bin"}
+        for i, patch in enumerate(gpu_patches)
+    ]
+})
+
+// train all patches on GPUs
+
+splat.cleanup_splats(...)
+
+splat.merge_ply_files(...)
+
+// create ortho
+// publish
+
 ```
-
-# Local Development
-
-This library uses Rust extensions built with Maturin. To set up locally:
-
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install Rust (if not already installed)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-
-# Install dependencies and build
-pip install maturin
-pip install -r requirements.txt
-maturin develop
-```
-
-After making changes to Rust code, rebuild with `maturin develop`.
-

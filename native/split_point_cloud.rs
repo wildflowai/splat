@@ -80,16 +80,16 @@ impl Config {
 #[pyclass]
 pub struct Patch {
     #[pyo3(get, set)]
-    #[serde(rename = "minX", default = "default_neg_inf")]
+    #[serde(default = "default_neg_inf")]
     pub min_x: f64,
     #[pyo3(get, set)]
-    #[serde(rename = "minY", default = "default_neg_inf")]
+    #[serde(default = "default_neg_inf")]
     pub min_y: f64,
     #[pyo3(get, set)]
-    #[serde(rename = "maxX", default = "default_pos_inf")]
+    #[serde(default = "default_pos_inf")]
     pub max_x: f64,
     #[pyo3(get, set)]
-    #[serde(rename = "maxY", default = "default_pos_inf")]
+    #[serde(default = "default_pos_inf")]
     pub max_y: f64,
     #[pyo3(get, set)]
     pub output_file: String,

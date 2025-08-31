@@ -8,6 +8,7 @@ from ._core import Config, Patch, split_ply as _split_ply
 from ._core import split_cameras_json as _split_cameras_json
 from ._core import BoundingBox, patches as _patches
 from ._core import cleanup_splats as _cleanup_splats
+from ._core import merge_ply_files_py as _merge_ply_files
 from typing import Dict, Any, Union, List, Tuple
 import json
 
@@ -18,7 +19,7 @@ __all__ = [
     "split_cameras",
     "patches",
     "cleanup_splats",
-
+    "merge_ply_files",
 ]
 
 
@@ -80,12 +81,33 @@ def split_cameras(config: Union[Dict[str, Any], str]) -> Dict[str, Any]:
     Returns:
         Dict with camera/image/point counts for loaded data and written patches
         
+    Configuration format:
+        {
+            "input_path": str,        # Path to COLMAP sparse reconstruction (e.g., "/path/to/sparse/0")
+            "min_z": float,           # Optional: minimum Z coordinate filter
+            "max_z": float,           # Optional: maximum Z coordinate filter
+            "save_points3d": bool,    # Optional: save points3D.bin for all patches (default: False)
+            "patches": [              # List of spatial patches to create
+                {
+                    "output_path": str,      # Exact output directory path (no /sparse/0 added)
+                    "min_x": float,          # Minimum X coordinate
+                    "min_y": float,          # Minimum Y coordinate
+                    "max_x": float,          # Maximum X coordinate
+                    "max_y": float           # Maximum Y coordinate
+                }
+            ]
+        }
+        
     Example:
         >>> result = split_cameras({
         ...     "input_path": "/path/to/colmap/sparse/0", 
         ...     "min_z": -2.0, "max_z": 10.0,
+        ...     "save_points3d": True,  # Global setting for all patches
         ...     "patches": [
-        ...         {"output_path": "/output/p0", "min_x": -1, "min_y": -1, "max_x": 1, "max_y": 1}
+        ...         {
+        ...             "output_path": "/output/patch_0/sparse/0",  # Specify exact path
+        ...             "min_x": -1, "min_y": -1, "max_x": 1, "max_y": 1
+        ...         }
         ...     ]
         ... })
     """
@@ -178,3 +200,40 @@ def cleanup_splats(config: Union[Dict[str, Any], str]) -> None:
         config_json = config
         
     return _cleanup_splats(config_json)
+
+
+def merge_ply_files(config: Union[Dict[str, Any], str]) -> None:
+    """
+    Merge multiple PLY files into one by concatenating vertex data.
+    
+    Args:
+        config: Merge configuration. Can be:
+                - Dictionary with config data (recommended)
+                - JSON string with config data
+
+    Returns:
+        None (writes merged PLY file)
+        
+    Configuration format:
+        {
+            "input_files": [str],     # List of input PLY file paths
+            "output_file": str        # Output merged PLY file path
+        }
+        
+    Example:
+        >>> merge_ply_files({
+        ...     "input_files": ["clean-p0.ply", "clean-p1.ply", "clean-p2.ply"],
+        ...     "output_file": "full-model.ply"
+        ... })
+        
+    Note:
+        - All input PLY files must have identical structure (same properties)
+        - Only vertex data is merged (faces are not supported)
+        - Header is copied from first file with updated vertex count
+    """
+    if isinstance(config, dict):
+        config_json = json.dumps(config)
+    else:
+        config_json = config
+        
+    return _merge_ply_files(config_json)
