@@ -1,0 +1,5 @@
+playwright>=1.40.0
+requests>=2.31.0
+plyfile>=1.1.2
+Pillow>=10.0.0
+# After installing, run: playwright install chromium
