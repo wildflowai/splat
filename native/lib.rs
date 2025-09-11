@@ -3,6 +3,7 @@ use pyo3::wrap_pyfunction;
 
 pub mod cleanup;
 pub mod merge;
+pub mod ortho_cells;
 mod patches;
 mod split_cameras;
 mod split_point_cloud;
@@ -22,6 +23,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge::merge_ply_files_py, m)?)?;
 
     m.add_function(wrap_pyfunction!(split_cameras::split_cameras_json, m)?)?;
+
+    m.add_class::<ortho_cells::OrthoCells>()?;
 
     Ok(())
 }

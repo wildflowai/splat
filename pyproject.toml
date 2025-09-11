@@ -30,6 +30,14 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
+dependencies = [
+    "numpy",
+    "pillow", 
+    "playwright",
+    "requests",
+    "tqdm",
+]
+
 [project.urls]
 repository = "https://github.com/wildflowai/wildflow-splat"
 documentation = "https://docs.wildflow.ai"
