@@ -93,7 +93,10 @@ fn read_colmap_points3d_binary_to_grid(
         let _b = reader.read_u8()?;
         let _error = reader.read_f64::<LittleEndian>()?;
         let track_len = reader.read_u64::<LittleEndian>()?;
-        reader.seek_relative((track_len * 12) as i64)?;
+        
+        // Skip track data: each track element is 8 bytes (image_id: u32 + point2d_idx: u32)
+        let mut skip_buf = vec![0u8; (track_len * 8) as usize];
+        reader.read_exact(&mut skip_buf)?;
 
         let point = [x, y, z];
         let cell = point_to_grid_cell(&point, cell_size);
